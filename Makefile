@@ -1,5 +1,9 @@
 .PHONY: build bump-patch bump-minor bump-major bump clean
 
+# Run tests
+test:
+	uv run pytest tests/ -v
+
 # Build the package
 build:
 	python -m build
