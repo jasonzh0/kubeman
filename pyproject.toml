@@ -10,8 +10,8 @@ readme = "README.md"
 requires-python = ">=3.8"
 license = {text = "MIT"}
 authors = [
-    {name = "Hazel Sudzilouski"},
-    {name = "Jason Zhang"}
+    {name = "Hazel Sudzilouski", email = "hazel@sudz.com"},
+    {name = "Jason Zhang", email = "me@jasonzhang.dev"}
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",
