@@ -1,0 +1,35 @@
+name: Tests
+
+on:
+  push:
+    branches: main
+  pull_request:
+    branches: main
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.13"]
+
+    steps:
+    - uses: actions/checkout@v5
+
+    - name: Install uv and set Python version
+      uses: astral-sh/setup-uv@v6
+      with:
+        python-version: ${{ matrix.python-version }}
+        enable-cache: true
+
+    - name: Install dependencies
+      run: |
+        uv sync --all-extras --dev
+
+    - name: Run tests
+      run: |
+        uv run pytest tests/ -v
+
+    - name: Check package can be imported
+      run: |
+        uv run python -c "from kubeman import Template, HelmChart, KubernetesResource, TemplateRegistry; print('Import successful!')"
