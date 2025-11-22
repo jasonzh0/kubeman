@@ -66,8 +66,9 @@ class HelmChart(Template):
         # Render extra manifests if any
         self.render_extra()
 
-        # Write Application manifest
-        self._write_application()
+        # Write Application manifest if ArgoCD is enabled
+        if self.enable_argocd() and self.application_repo_url():
+            self._write_application()
 
     def ensure_helm_repo(self) -> str:
         """

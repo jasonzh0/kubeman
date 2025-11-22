@@ -455,8 +455,9 @@ class KubernetesResource(Template):
         # Render manifests
         self.render_manifests()
 
-        # Write Application manifest
-        self._write_application()
+        # Write Application manifest if ArgoCD is enabled
+        if self.enable_argocd() and self.application_repo_url():
+            self._write_application()
 
     def render_manifests(self) -> None:
         """

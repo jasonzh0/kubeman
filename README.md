@@ -1,6 +1,6 @@
 # Kubeman
 
-A Python library for rendering Helm charts and Kubernetes resources with automatic ArgoCD Application generation. Features an abstract Template base class for consistent template management.
+A Python library for rendering Helm charts and Kubernetes resources with optional ArgoCD Application generation. Features an abstract Template base class for consistent template management.
 
 ## Features
 
@@ -11,7 +11,7 @@ A Python library for rendering Helm charts and Kubernetes resources with automat
 - Command-line interface (CLI) for rendering and applying manifests
 - Git operations for manifest repository management
 - Docker image build and push utilities
-- Automatic ArgoCD Application manifest generation
+- Optional ArgoCD Application manifest generation (opt-in)
 
 ## Installation
 
@@ -79,7 +79,7 @@ uv run python -m pre_commit run --all-files
 
 Both `HelmChart` and `KubernetesResource` inherit from the abstract `Template` base class, which provides common functionality for:
 
-- ArgoCD Application manifest generation
+- Optional ArgoCD Application manifest generation (opt-in)
 - Manifest directory management
 - Namespace and name properties
 - Rendering to filesystem
@@ -128,7 +128,7 @@ class MyChart(HelmChart):
 
 ### Creating a Kubernetes Resource (Without Helm)
 
-For projects that don't need Helm but still want ArgoCD Application generation and manifest management, use the `KubernetesResource` class. This class supports two usage patterns:
+For projects that don't need Helm but still want optional ArgoCD Application generation and manifest management, use the `KubernetesResource` class. This class supports two usage patterns:
 
 #### Pattern 1: Using Helper Methods (Recommended)
 
@@ -303,7 +303,7 @@ class MyAppResources(KubernetesResource):
         ]
 ```
 
-The `KubernetesResource` class provides a simpler interface than `HelmChart` when you don't need Helm's templating capabilities. It still generates ArgoCD Applications and integrates with the `TemplateRegistry` system.
+The `KubernetesResource` class provides a simpler interface than `HelmChart` when you don't need Helm's templating capabilities. It supports optional ArgoCD Application generation and integrates with the `TemplateRegistry` system.
 
 ### Rendering Charts and Resources
 
@@ -364,11 +364,11 @@ The `render()` method will:
 **For HelmChart:**
 1. Render the Helm chart templates to `manifests/{chart-name}/{chart-name}-manifests.yaml`
 2. Write any extra manifests to `manifests/{chart-name}/`
-3. Generate an ArgoCD Application manifest to `manifests/apps/{chart-name}-application.yaml`
+3. Generate an ArgoCD Application manifest to `manifests/apps/{chart-name}-application.yaml` (if ArgoCD is enabled)
 
 **For KubernetesResource:**
 1. Write each Kubernetes manifest to `manifests/{name}/{manifest-name}-{kind}.yaml`
-2. Generate an ArgoCD Application manifest to `manifests/apps/{name}-application.yaml`
+2. Generate an ArgoCD Application manifest to `manifests/apps/{name}-application.yaml` (if ArgoCD is enabled)
 
 ### Advanced Chart Configuration
 
@@ -411,11 +411,37 @@ def extra_manifests(self) -> list[dict]:
     ]
 ```
 
+#### Enabling ArgoCD Application Generation (Opt-In)
+
+ArgoCD Application generation is disabled by default. To enable it, you have two options:
+
+**Option 1: Set environment variable**
+```bash
+export ARGOCD_APP_REPO_URL="https://github.com/org/manifests-repo"
+```
+
+**Option 2: Override `enable_argocd()` method**
+```python
+@TemplateRegistry.register
+class MyChart(HelmChart):
+    # ... other methods ...
+
+    def enable_argocd(self) -> bool:
+        """Enable ArgoCD Application generation for this chart"""
+        return True
+```
+
+When ArgoCD is enabled, the Application manifest will be generated during the render process. If `ARGOCD_APP_REPO_URL` is not set and `enable_argocd()` returns `True`, you must also override `application_repo_url()` to provide the repository URL.
+
 #### Custom ArgoCD Application Settings
 
 Customize the ArgoCD Application generation:
 
 ```python
+def enable_argocd(self) -> bool:
+    """Enable ArgoCD Application generation (opt-in)"""
+    return True
+
 def application_repo_url(self) -> str:
     """Override the repository URL for ArgoCD applications"""
     return "https://github.com/org/manifests-repo"
@@ -506,10 +532,14 @@ image_name = docker.build_and_push(
 - `RENDERED_MANIFEST_DIR` - Path to directory containing rendered manifests
 - `MANIFEST_REPO_URL` - Git repository URL for pushing manifests (optional if passed to `push_manifests()`)
 
-### Required for ArgoCD Applications
+### Optional for ArgoCD Applications
 
-- `ARGOCD_APP_REPO_URL` - Repository URL for ArgoCD applications (or override `application_repo_url()`)
+ArgoCD Application generation is opt-in and disabled by default. To enable:
+
+- `ARGOCD_APP_REPO_URL` - Repository URL for ArgoCD applications (or override `application_repo_url()`). Required if ArgoCD is enabled.
 - `ARGOCD_APPS_SUBDIR` - Subdirectory for applications (defaults to "apps")
+
+You can also enable ArgoCD by overriding the `enable_argocd()` method in your template class to return `True`.
 
 ### Required for Docker Operations
 
@@ -557,6 +587,10 @@ class PostgresChart(HelmChart):
                 "size": "10Gi"
             }
         }
+
+    def enable_argocd(self) -> bool:
+        """Enable ArgoCD Application generation (opt-in)"""
+        return True
 
 # Define custom Kubernetes resources for your application
 @TemplateRegistry.register

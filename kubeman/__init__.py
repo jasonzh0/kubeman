@@ -1,5 +1,5 @@
 """
-Kubeman - A Python library for rendering Helm charts and ArgoCD applications.
+Kubeman - A Python library for rendering Helm charts and Kubernetes resources with optional ArgoCD Application generation.
 """
 
 from kubeman.template import Template

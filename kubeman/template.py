@@ -9,7 +9,7 @@ class Template(ABC):
     Abstract base class for all template types (Helm Charts and Kubernetes Resources).
 
     Provides common functionality for:
-    - ArgoCD Application generation
+    - Optional ArgoCD Application generation
     - Manifest directory management
     - Rendering to filesystem
     """
@@ -31,6 +31,10 @@ class Template(ABC):
         """Return the base directory for manifests"""
         return os.path.abspath(os.path.join(os.path.dirname(__file__), "../../manifests"))
 
+    def enable_argocd(self) -> bool:
+        """Return whether ArgoCD Application generation is enabled. Defaults to False (opt-in)."""
+        return False
+
     def argo_ignore_spec(self) -> list:
         """Return any ignore specs for ArgoCD application. Empty list by default."""
         return []
@@ -51,14 +55,14 @@ class Template(ABC):
         """Return the subdirectory name for applications. Override to customize."""
         return os.getenv("ARGOCD_APPS_SUBDIR", "apps")
 
-    def generate_application(self) -> dict:
-        """Generate the ArgoCD Application manifest for this template"""
+    def generate_application(self) -> dict | None:
+        """Generate the ArgoCD Application manifest for this template. Returns None if ArgoCD is disabled."""
+        if not self.enable_argocd():
+            return None
+
         repo_url = self.application_repo_url()
         if not repo_url:
-            raise ValueError(
-                "application_repo_url() must return a valid repository URL, "
-                "or set ARGOCD_APP_REPO_URL environment variable"
-            )
+            return None
 
         app = {
             "apiVersion": "argoproj.io/v1alpha1",
@@ -108,10 +112,15 @@ class Template(ABC):
         """
         Write the ArgoCD Application manifest.
         This is a common helper method that subclasses can call.
+        Skips writing if ArgoCD is disabled or no repo URL is configured.
         """
+        app = self.generate_application()
+        if app is None:
+            return
+
         apps_dir = os.path.join(self.manifests_dir(), self.apps_subdirectory())
         os.makedirs(apps_dir, exist_ok=True)
 
         app_file = os.path.join(apps_dir, f"{self.name}-application.yaml")
         with open(app_file, "w") as f:
-            yaml.dump(self.generate_application(), f)
+            yaml.dump(app, f)

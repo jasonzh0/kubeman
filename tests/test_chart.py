@@ -110,14 +110,20 @@ class TestHelmChart:
         assert chart.managed_namespace_metadata() == {}
 
     def test_generate_application(self, monkeypatch):
-        """Test generating ArgoCD Application manifest."""
+        """Test generating ArgoCD Application manifest when enabled."""
         chart = ConcreteHelmChart()
         monkeypatch.setenv("ARGOCD_APP_REPO_URL", "https://github.com/test/repo")
         monkeypatch.setenv("STABLE_GIT_BRANCH", "main")
 
-        with patch.object(GitManager, "fetch_branch_name", return_value="main"):
-            app = chart.generate_application()
+        class EnabledChart(ConcreteHelmChart):
+            def enable_argocd(self):
+                return True
 
+        enabled_chart = EnabledChart()
+        with patch.object(GitManager, "fetch_branch_name", return_value="main"):
+            app = enabled_chart.generate_application()
+
+        assert app is not None
         assert app["apiVersion"] == "argoproj.io/v1alpha1"
         assert app["kind"] == "Application"
         assert app["metadata"]["name"] == "test-chart"
@@ -129,18 +135,67 @@ class TestHelmChart:
         assert app["spec"]["syncPolicy"]["automated"]["prune"] is True
         assert app["spec"]["syncPolicy"]["automated"]["selfHeal"] is True
 
+    def test_enable_argocd_default(self):
+        """Test that enable_argocd defaults to False (opt-in)."""
+        chart = ConcreteHelmChart()
+        assert chart.enable_argocd() is False
+
     def test_generate_application_no_repo_url(self, monkeypatch):
-        """Test that generate_application raises error if no repo URL."""
+        """Test that generate_application returns None if no repo URL."""
         chart = ConcreteHelmChart()
         monkeypatch.delenv("ARGOCD_APP_REPO_URL", raising=False)
 
-        with pytest.raises(ValueError, match="application_repo_url"):
-            chart.generate_application()
+        app = chart.generate_application()
+        assert app is None
+
+    def test_generate_application_disabled(self, monkeypatch):
+        """Test that generate_application returns None if ArgoCD is disabled."""
+        chart = ConcreteHelmChart()
+        monkeypatch.setenv("ARGOCD_APP_REPO_URL", "https://github.com/test/repo")
+
+        class DisabledChart(ConcreteHelmChart):
+            def enable_argocd(self):
+                return False
+
+        disabled_chart = DisabledChart()
+        app = disabled_chart.generate_application()
+        assert app is None
+
+    def test_generate_application_env_var_alone_not_enough(self, monkeypatch):
+        """Test that setting ARGOCD_APP_REPO_URL alone doesn't enable ArgoCD (default off)."""
+        chart = ConcreteHelmChart()
+        monkeypatch.setenv("ARGOCD_APP_REPO_URL", "https://github.com/test/repo")
+        # Don't override enable_argocd() - should default to False
+
+        # Even with env var set, should return None because enable_argocd() defaults to False
+        app = chart.generate_application()
+        assert app is None
+
+    def test_generate_application_opt_in_via_env(self, monkeypatch):
+        """Test that ArgoCD can be enabled via environment variable."""
+        chart = ConcreteHelmChart()
+        monkeypatch.setenv("ARGOCD_APP_REPO_URL", "https://github.com/test/repo")
+        monkeypatch.setenv("STABLE_GIT_BRANCH", "main")
+
+        class EnabledChart(ConcreteHelmChart):
+            def enable_argocd(self):
+                return True
+
+        enabled_chart = EnabledChart()
+        with patch.object(GitManager, "fetch_branch_name", return_value="main"):
+            app = enabled_chart.generate_application()
+
+        assert app is not None
+        assert app["apiVersion"] == "argoproj.io/v1alpha1"
+        assert app["spec"]["source"]["repoURL"] == "https://github.com/test/repo"
 
     def test_generate_application_with_managed_namespace_metadata(self, monkeypatch):
         """Test generating application with managed namespace metadata."""
 
         class ChartWithMetadata(ConcreteHelmChart):
+            def enable_argocd(self):
+                return True
+
             def managed_namespace_metadata(self):
                 return {"label1": "value1", "label2": "value2"}
 
@@ -151,6 +206,7 @@ class TestHelmChart:
         with patch.object(GitManager, "fetch_branch_name", return_value="main"):
             app = chart.generate_application()
 
+        assert app is not None
         assert "managedNamespaceMetadata" in app["spec"]["syncPolicy"]
         assert app["spec"]["syncPolicy"]["managedNamespaceMetadata"]["labels"] == {
             "label1": "value1",
@@ -412,14 +468,20 @@ class TestKubernetesResource:
         assert resource.managed_namespace_metadata() == {}
 
     def test_generate_application(self, monkeypatch):
-        """Test generating ArgoCD Application manifest."""
+        """Test generating ArgoCD Application manifest when enabled."""
         resource = ConcreteKubernetesResource()
         monkeypatch.setenv("ARGOCD_APP_REPO_URL", "https://github.com/test/repo")
         monkeypatch.setenv("STABLE_GIT_BRANCH", "main")
 
-        with patch.object(GitManager, "fetch_branch_name", return_value="main"):
-            app = resource.generate_application()
+        class EnabledResource(ConcreteKubernetesResource):
+            def enable_argocd(self):
+                return True
 
+        enabled_resource = EnabledResource()
+        with patch.object(GitManager, "fetch_branch_name", return_value="main"):
+            app = enabled_resource.generate_application()
+
+        assert app is not None
         assert app["apiVersion"] == "argoproj.io/v1alpha1"
         assert app["kind"] == "Application"
         assert app["metadata"]["name"] == "test-resource"
@@ -431,18 +493,67 @@ class TestKubernetesResource:
         assert app["spec"]["syncPolicy"]["automated"]["prune"] is True
         assert app["spec"]["syncPolicy"]["automated"]["selfHeal"] is True
 
+    def test_enable_argocd_default(self):
+        """Test that enable_argocd defaults to False (opt-in)."""
+        resource = ConcreteKubernetesResource()
+        assert resource.enable_argocd() is False
+
     def test_generate_application_no_repo_url(self, monkeypatch):
-        """Test that generate_application raises error if no repo URL."""
+        """Test that generate_application returns None if no repo URL."""
         resource = ConcreteKubernetesResource()
         monkeypatch.delenv("ARGOCD_APP_REPO_URL", raising=False)
 
-        with pytest.raises(ValueError, match="application_repo_url"):
-            resource.generate_application()
+        app = resource.generate_application()
+        assert app is None
+
+    def test_generate_application_disabled(self, monkeypatch):
+        """Test that generate_application returns None if ArgoCD is disabled."""
+        resource = ConcreteKubernetesResource()
+        monkeypatch.setenv("ARGOCD_APP_REPO_URL", "https://github.com/test/repo")
+
+        class DisabledResource(ConcreteKubernetesResource):
+            def enable_argocd(self):
+                return False
+
+        disabled_resource = DisabledResource()
+        app = disabled_resource.generate_application()
+        assert app is None
+
+    def test_generate_application_env_var_alone_not_enough(self, monkeypatch):
+        """Test that setting ARGOCD_APP_REPO_URL alone doesn't enable ArgoCD (default off)."""
+        resource = ConcreteKubernetesResource()
+        monkeypatch.setenv("ARGOCD_APP_REPO_URL", "https://github.com/test/repo")
+        # Don't override enable_argocd() - should default to False
+
+        # Even with env var set, should return None because enable_argocd() defaults to False
+        app = resource.generate_application()
+        assert app is None
+
+    def test_generate_application_opt_in_via_env(self, monkeypatch):
+        """Test that ArgoCD can be enabled via environment variable."""
+        resource = ConcreteKubernetesResource()
+        monkeypatch.setenv("ARGOCD_APP_REPO_URL", "https://github.com/test/repo")
+        monkeypatch.setenv("STABLE_GIT_BRANCH", "main")
+
+        class EnabledResource(ConcreteKubernetesResource):
+            def enable_argocd(self):
+                return True
+
+        enabled_resource = EnabledResource()
+        with patch.object(GitManager, "fetch_branch_name", return_value="main"):
+            app = enabled_resource.generate_application()
+
+        assert app is not None
+        assert app["apiVersion"] == "argoproj.io/v1alpha1"
+        assert app["spec"]["source"]["repoURL"] == "https://github.com/test/repo"
 
     def test_generate_application_with_managed_namespace_metadata(self, monkeypatch):
         """Test generating application with managed namespace metadata."""
 
         class ResourceWithMetadata(ConcreteKubernetesResource):
+            def enable_argocd(self):
+                return True
+
             def managed_namespace_metadata(self):
                 return {"label1": "value1", "label2": "value2"}
 
@@ -453,6 +564,7 @@ class TestKubernetesResource:
         with patch.object(GitManager, "fetch_branch_name", return_value="main"):
             app = resource.generate_application()
 
+        assert app is not None
         assert "managedNamespaceMetadata" in app["spec"]["syncPolicy"]
         assert app["spec"]["syncPolicy"]["managedNamespaceMetadata"]["labels"] == {
             "label1": "value1",
@@ -529,14 +641,19 @@ class TestKubernetesResource:
             assert "No manifests for test-resource" in captured.out
 
     def test_render(self, tmp_path, monkeypatch):
-        """Test full render process."""
+        """Test full render process with ArgoCD enabled."""
         resource = ConcreteKubernetesResource()
         monkeypatch.setenv("ARGOCD_APP_REPO_URL", "https://github.com/test/repo")
         monkeypatch.setenv("STABLE_GIT_BRANCH", "main")
 
-        with patch.object(resource, "manifests_dir", return_value=str(tmp_path)):
+        class EnabledResource(ConcreteKubernetesResource):
+            def enable_argocd(self):
+                return True
+
+        enabled_resource = EnabledResource()
+        with patch.object(enabled_resource, "manifests_dir", return_value=str(tmp_path)):
             with patch.object(GitManager, "fetch_branch_name", return_value="main"):
-                resource.render()
+                enabled_resource.render()
 
         # Check that manifests were created
         config_file = tmp_path / "test-resource" / "test-config-configmap.yaml"
@@ -547,3 +664,21 @@ class TestKubernetesResource:
         # Check that Application manifest was created
         app_file = tmp_path / "apps" / "test-resource-application.yaml"
         assert app_file.exists()
+
+    def test_render_without_argocd(self, tmp_path, monkeypatch):
+        """Test render process skips ArgoCD when disabled."""
+        resource = ConcreteKubernetesResource()
+        monkeypatch.delenv("ARGOCD_APP_REPO_URL", raising=False)
+
+        with patch.object(resource, "manifests_dir", return_value=str(tmp_path)):
+            resource.render()
+
+        # Check that manifests were created
+        config_file = tmp_path / "test-resource" / "test-config-configmap.yaml"
+        deployment_file = tmp_path / "test-resource" / "test-deployment-deployment.yaml"
+        assert config_file.exists()
+        assert deployment_file.exists()
+
+        # Check that Application manifest was NOT created
+        app_file = tmp_path / "apps" / "test-resource-application.yaml"
+        assert not app_file.exists()
