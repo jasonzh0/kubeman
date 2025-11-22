@@ -8,6 +8,7 @@ A Python library for rendering Helm charts and Kubernetes resources with automat
 - `HelmChart` class for defining Helm charts
 - `KubernetesResource` class for raw Kubernetes resources (no Helm required)
 - `TemplateRegistry` for managing multiple templates (charts and resources)
+- Command-line interface (CLI) for rendering and applying manifests
 - Git operations for manifest repository management
 - Docker image build and push utilities
 - Automatic ArgoCD Application manifest generation
@@ -306,7 +307,45 @@ The `KubernetesResource` class provides a simpler interface than `HelmChart` whe
 
 ### Rendering Charts and Resources
 
-Once your charts and resources are registered, you can render them:
+Once your charts and resources are registered, you can render them using either the CLI or Python API.
+
+#### Using the CLI (Recommended)
+
+The easiest way to render and apply your templates is using the `kubeman` CLI command:
+
+```bash
+# Render all templates from a Python file
+kubeman render --file templates.py
+
+# Render and apply to Kubernetes cluster
+kubeman apply --file templates.py
+
+# Apply with a specific namespace
+kubeman apply --file templates.py --namespace my-namespace
+```
+
+The CLI will:
+1. Import your template file (which should contain `@TemplateRegistry.register` decorated classes)
+2. Discover all registered templates
+3. Render each template to the `manifests/` directory
+4. For `apply`, also run `kubectl apply` on the rendered manifests
+
+**Example template file (`templates.py`):**
+
+```python
+from kubeman import KubernetesResource, TemplateRegistry
+
+@TemplateRegistry.register
+class MyAppResources(KubernetesResource):
+    def __init__(self):
+        super().__init__()
+        self.namespace = "production"
+        # ... add resources using helper methods ...
+```
+
+#### Using the Python API
+
+You can also render templates programmatically:
 
 ```python
 from kubeman import TemplateRegistry
@@ -563,7 +602,11 @@ class MyAppResources(KubernetesResource):
 docker = DockerManager()
 docker.build_and_push("my-app", "./app", tag="v1.0.0")
 
-# Render all registered templates (charts and resources)
+# Option 1: Use CLI to render and apply
+# kubeman render --file templates.py
+# kubeman apply --file templates.py
+
+# Option 2: Render programmatically
 for template_class in TemplateRegistry.get_registered_templates():
     template = template_class()
     template.render()
@@ -580,50 +623,6 @@ This package is automatically published to PyPI via GitHub Actions when:
 1. **A new release is published** on GitHub
 2. **A version tag is pushed** (e.g., `v0.1.0`, `v1.0.0`)
 3. **Manual trigger** via the GitHub Actions workflow
-
-### Setup for Publishing
-
-The workflow uses PyPI trusted publishing (OIDC). To enable it:
-
-1. Go to [PyPI Account Settings](https://pypi.org/manage/account/)
-2. Navigate to "API tokens" → "Add a pending project"
-3. Add your project name: `kubeman`
-4. Copy the "Trusted publisher" configuration
-5. In your GitHub repository, go to Settings → Secrets and variables → Actions
-6. Add the PyPI project name and repository owner as environment variables (if needed)
-
-Alternatively, you can use an API token:
-1. Create an API token on PyPI
-2. Add it as a secret named `PYPI_API_TOKEN` in your GitHub repository
-
-### Manual Publishing
-
-To publish manually:
-
-```bash
-# Build the package
-python -m build
-
-# Check the package
-python -m twine check dist/*
-
-# Upload to PyPI (requires credentials)
-python -m twine upload dist/*
-```
-
-### Installing from PyPI
-
-Once published, users can install the package with:
-
-```bash
-pip install kubeman
-```
-
-Or with `uv`:
-
-```bash
-uv pip install kubeman
-```
 
 ## License
 
