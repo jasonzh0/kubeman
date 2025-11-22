@@ -4,9 +4,10 @@ A Python library for rendering Helm charts and ArgoCD applications.
 
 ## Features
 
-- Abstract base class for defining Helm charts
-- Abstract base class for raw Kubernetes resources (no Helm required)
-- Chart registry for managing multiple charts and resources
+- Abstract `Template` base class for all template types
+- `HelmChart` class for defining Helm charts
+- `KubernetesResource` class for raw Kubernetes resources (no Helm required)
+- `TemplateRegistry` for managing multiple templates (charts and resources)
 - Git operations for manifest repository management
 - Docker image build and push utilities
 - Automatic ArgoCD Application manifest generation
@@ -73,14 +74,25 @@ uv run python -m pre_commit run --all-files
 
 ## Usage
 
+### Template Architecture
+
+Both `HelmChart` and `KubernetesResource` inherit from the abstract `Template` base class, which provides common functionality for:
+
+- ArgoCD Application manifest generation
+- Manifest directory management
+- Namespace and name properties
+- Rendering to filesystem
+
+This shared base class ensures consistent behavior across all template types while allowing each subclass to implement its specific rendering logic.
+
 ### Creating a Helm Chart
 
 To create a Helm chart, subclass `HelmChart` and implement the required abstract methods:
 
 ```python
-from kubeman import HelmChart, ChartRegistry
+from kubeman import HelmChart, TemplateRegistry
 
-@ChartRegistry.register
+@TemplateRegistry.register
 class MyChart(HelmChart):
     @property
     def name(self) -> str:
@@ -115,20 +127,132 @@ class MyChart(HelmChart):
 
 ### Creating a Kubernetes Resource (Without Helm)
 
-For projects that don't need Helm but still want ArgoCD Application generation and manifest management, use the `KubernetesResource` class:
+For projects that don't need Helm but still want ArgoCD Application generation and manifest management, use the `KubernetesResource` class. This class supports two usage patterns:
+
+#### Pattern 1: Using Helper Methods (Recommended)
+
+Use the built-in helper methods to build Kubernetes resources:
 
 ```python
-from kubeman import KubernetesResource, ChartRegistry
+from kubeman import KubernetesResource, TemplateRegistry
 
-@ChartRegistry.register
-class MyKubernetesResources(KubernetesResource):
-    @property
-    def name(self) -> str:
-        return "my-app"
+@TemplateRegistry.register
+class DogBreedsDbChart(KubernetesResource):
+    """Dog Breeds PostgreSQL database resources."""
 
-    @property
-    def namespace(self) -> str:
-        return "production"
+    def __init__(self):
+        super().__init__()
+        self.namespace = "dog-breeds"
+
+        # Add Namespace
+        self.add_namespace(
+            name="dog-breeds",
+            labels={"app": "dog-breeds", "component": "database"},
+        )
+
+        # Add ConfigMap for database configuration
+        self.add_configmap(
+            name="dog-breeds-db-config",
+            namespace="dog-breeds",
+            data={
+                "POSTGRES_DB": "dog_breeds_db",
+                "POSTGRES_USER": "airflow",
+            },
+            labels={"app": "dog-breeds", "component": "database"},
+        )
+
+        # Add Secret for database password
+        self.add_secret(
+            name="dog-breeds-db-secret",
+            namespace="dog-breeds",
+            string_data={
+                "POSTGRES_PASSWORD": "airflow",
+            },
+            labels={"app": "dog-breeds", "component": "database"},
+        )
+
+        # Add PersistentVolumeClaim
+        self.add_persistent_volume_claim(
+            name="dog-breeds-db-pvc",
+            namespace="dog-breeds",
+            access_modes=["ReadWriteOnce"],
+            storage="5Gi",
+            labels={"app": "dog-breeds", "component": "database"},
+        )
+
+        # Add Deployment
+        self.add_deployment(
+            name="dog-breeds-db",
+            namespace="dog-breeds",
+            replicas=1,
+            strategy_type="Recreate",
+            labels={"app": "dog-breeds", "component": "database"},
+            containers=[
+                {
+                    "name": "postgres",
+                    "image": "postgres:16-alpine",
+                    "ports": [{"name": "postgres", "containerPort": 5432}],
+                    "env": [
+                        {
+                            "name": "POSTGRES_PASSWORD",
+                            "valueFrom": {
+                                "secretKeyRef": {
+                                    "name": "dog-breeds-db-secret",
+                                    "key": "POSTGRES_PASSWORD",
+                                },
+                            },
+                        },
+                    ],
+                    "volumeMounts": [
+                        {"name": "postgres-storage", "mountPath": "/var/lib/postgresql/data"},
+                    ],
+                }
+            ],
+            volumes=[
+                {"name": "postgres-storage", "persistentVolumeClaim": {"claimName": "dog-breeds-db-pvc"}},
+            ],
+        )
+
+        # Add Service
+        self.add_service(
+            name="dog-breeds-db",
+            namespace="dog-breeds",
+            service_type="ClusterIP",
+            selector={"app": "dog-breeds", "component": "database"},
+            ports=[{"name": "postgres", "port": 5432, "targetPort": 5432}],
+            labels={"app": "dog-breeds", "component": "database"},
+        )
+```
+
+**Available Helper Methods:**
+
+- `add_namespace()` - Create a Namespace
+- `add_configmap()` - Create a ConfigMap
+- `add_secret()` - Create a Secret
+- `add_persistent_volume_claim()` - Create a PVC
+- `add_deployment()` - Create a Deployment
+- `add_statefulset()` - Create a StatefulSet
+- `add_service()` - Create a Service (ClusterIP, NodePort, LoadBalancer)
+- `add_ingress()` - Create an Ingress
+- `add_service_account()` - Create a ServiceAccount
+- `add_role()` - Create a Role
+- `add_role_binding()` - Create a RoleBinding
+- `add_cluster_role()` - Create a ClusterRole
+- `add_cluster_role_binding()` - Create a ClusterRoleBinding
+- `add_custom_resource()` - Add any custom Kubernetes resource
+
+#### Pattern 2: Override manifests() Method
+
+For more complex logic or custom manifest generation, override the `manifests()` method:
+
+```python
+from kubeman import KubernetesResource, TemplateRegistry
+
+@TemplateRegistry.register
+class MyAppResources(KubernetesResource):
+    def __init__(self):
+        super().__init__()
+        self.namespace = "production"
 
     def manifests(self) -> list[dict]:
         """Return list of Kubernetes manifests"""
@@ -142,7 +266,6 @@ class MyKubernetesResources(KubernetesResource):
                 },
                 "data": {
                     "DATABASE_URL": "postgres://db:5432/myapp",
-                    "CACHE_ENABLED": "true"
                 }
             },
             {
@@ -168,41 +291,26 @@ class MyKubernetesResources(KubernetesResource):
                         }
                     }
                 }
-            },
-            {
-                "apiVersion": "v1",
-                "kind": "Service",
-                "metadata": {
-                    "name": "my-app",
-                    "namespace": "production"
-                },
-                "spec": {
-                    "selector": {"app": "my-app"},
-                    "ports": [{
-                        "port": 80,
-                        "targetPort": 8080
-                    }]
-                }
             }
         ]
 ```
 
-The `KubernetesResource` class provides a simpler interface than `HelmChart` when you don't need Helm's templating capabilities. It still generates ArgoCD Applications and integrates with the `ChartRegistry` system.
+The `KubernetesResource` class provides a simpler interface than `HelmChart` when you don't need Helm's templating capabilities. It still generates ArgoCD Applications and integrates with the `TemplateRegistry` system.
 
 ### Rendering Charts and Resources
 
 Once your charts and resources are registered, you can render them:
 
 ```python
-from kubeman import ChartRegistry
+from kubeman import TemplateRegistry
 
-# Get all registered charts and resources
-charts = ChartRegistry.get_registered_charts()
+# Get all registered templates (charts and resources)
+templates = TemplateRegistry.get_registered_templates()
 
-# Render each chart/resource
-for chart_class in charts:
-    chart = chart_class()
-    chart.render()  # Generates manifests and ArgoCD Application
+# Render each template
+for template_class in templates:
+    template = template_class()
+    template.render()  # Generates manifests and ArgoCD Application
 ```
 
 The `render()` method will:
@@ -369,10 +477,10 @@ image_name = docker.build_and_push(
 Here's a complete example that ties everything together, using both `HelmChart` and `KubernetesResource`:
 
 ```python
-from kubeman import HelmChart, KubernetesResource, ChartRegistry, GitManager, DockerManager
+from kubeman import HelmChart, KubernetesResource, TemplateRegistry, GitManager, DockerManager
 
 # Define a Helm chart for a third-party application
-@ChartRegistry.register
+@TemplateRegistry.register
 class PostgresChart(HelmChart):
     @property
     def name(self) -> str:
@@ -405,7 +513,7 @@ class PostgresChart(HelmChart):
         }
 
 # Define custom Kubernetes resources for your application
-@ChartRegistry.register
+@TemplateRegistry.register
 class MyAppResources(KubernetesResource):
     @property
     def name(self) -> str:
@@ -448,10 +556,10 @@ class MyAppResources(KubernetesResource):
 docker = DockerManager()
 docker.build_and_push("my-app", "./app", tag="v1.0.0")
 
-# Render all registered charts and resources
-for chart_class in ChartRegistry.get_registered_charts():
-    chart = chart_class()
-    chart.render()
+# Render all registered templates (charts and resources)
+for template_class in TemplateRegistry.get_registered_templates():
+    template = template_class()
+    template.render()
 
 # Push manifests to repository
 git = GitManager()

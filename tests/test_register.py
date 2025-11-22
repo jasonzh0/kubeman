@@ -1,16 +1,16 @@
-"""Unit tests for ChartRegistry."""
+"""Unit tests for TemplateRegistry."""
 
 import pytest
-from kubeman.register import ChartRegistry
+from kubeman.register import TemplateRegistry
 from kubeman.chart import HelmChart
 
 
-class TestChartRegistry:
-    """Test cases for ChartRegistry class."""
+class TestTemplateRegistry:
+    """Test cases for TemplateRegistry class."""
 
     def setup_method(self):
         """Clear registry before each test."""
-        ChartRegistry.clear()
+        TemplateRegistry.clear()
 
     def test_register_chart(self):
         """Test registering a chart class."""
@@ -35,15 +35,15 @@ class TestChartRegistry:
             def generate_values(self):
                 return {}
 
-        ChartRegistry.register(TestChart)
-        charts = ChartRegistry.get_registered_charts()
-        assert len(charts) == 1
-        assert TestChart in charts
+        TemplateRegistry.register(TestChart)
+        templates = TemplateRegistry.get_registered_templates()
+        assert len(templates) == 1
+        assert TestChart in templates
 
     def test_register_as_decorator(self):
         """Test using register as a decorator."""
 
-        @ChartRegistry.register
+        @TemplateRegistry.register
         class TestChart(HelmChart):
             @property
             def name(self):
@@ -64,9 +64,9 @@ class TestChartRegistry:
             def generate_values(self):
                 return {}
 
-        charts = ChartRegistry.get_registered_charts()
-        assert len(charts) == 1
-        assert TestChart in charts
+        templates = TemplateRegistry.get_registered_templates()
+        assert len(templates) == 1
+        assert TestChart in templates
 
     def test_register_duplicate(self):
         """Test that registering the same chart twice doesn't duplicate."""
@@ -91,13 +91,13 @@ class TestChartRegistry:
             def generate_values(self):
                 return {}
 
-        ChartRegistry.register(TestChart)
-        ChartRegistry.register(TestChart)
-        charts = ChartRegistry.get_registered_charts()
-        assert len(charts) == 1
+        TemplateRegistry.register(TestChart)
+        TemplateRegistry.register(TestChart)
+        templates = TemplateRegistry.get_registered_templates()
+        assert len(templates) == 1
 
-    def test_get_registered_charts_returns_copy(self):
-        """Test that get_registered_charts returns a copy."""
+    def test_get_registered_templates_returns_copy(self):
+        """Test that get_registered_templates returns a copy."""
 
         class TestChart(HelmChart):
             @property
@@ -119,14 +119,14 @@ class TestChartRegistry:
             def generate_values(self):
                 return {}
 
-        ChartRegistry.register(TestChart)
-        charts1 = ChartRegistry.get_registered_charts()
-        charts2 = ChartRegistry.get_registered_charts()
+        TemplateRegistry.register(TestChart)
+        templates1 = TemplateRegistry.get_registered_templates()
+        templates2 = TemplateRegistry.get_registered_templates()
 
         # Should be different objects
-        assert charts1 is not charts2
+        assert templates1 is not templates2
         # But should have same content
-        assert charts1 == charts2
+        assert templates1 == templates2
 
     def test_clear(self):
         """Test clearing the registry."""
@@ -151,8 +151,8 @@ class TestChartRegistry:
             def generate_values(self):
                 return {}
 
-        ChartRegistry.register(TestChart)
-        assert len(ChartRegistry.get_registered_charts()) == 1
+        TemplateRegistry.register(TestChart)
+        assert len(TemplateRegistry.get_registered_templates()) == 1
 
-        ChartRegistry.clear()
-        assert len(ChartRegistry.get_registered_charts()) == 0
+        TemplateRegistry.clear()
+        assert len(TemplateRegistry.get_registered_templates()) == 0

@@ -1,26 +1,26 @@
 from typing import List, Type
-from kubeman.chart import HelmChart
+from kubeman.template import Template
 
 
-class ChartRegistry:
-    _charts: List[Type[HelmChart]] = []
+class TemplateRegistry:
+    _templates: List[Type[Template]] = []
 
     @classmethod
-    def register(cls, chart_class: Type[HelmChart]) -> Type[HelmChart]:
+    def register(cls, template_class: Type[Template]) -> Type[Template]:
         """
-        Register a HelmChart class.
+        Register a template class.
         Can be used as a decorator or called directly.
         """
-        if chart_class not in cls._charts:
-            cls._charts.append(chart_class)
-        return chart_class
+        if template_class not in cls._templates:
+            cls._templates.append(template_class)
+        return template_class
 
     @classmethod
-    def get_registered_charts(cls) -> List[Type[HelmChart]]:
-        """Return all registered chart classes"""
-        return cls._charts.copy()
+    def get_registered_templates(cls) -> List[Type[Template]]:
+        """Return all registered templates"""
+        return cls._templates.copy()
 
     @classmethod
     def clear(cls) -> None:
-        """Clear all registered charts"""
-        cls._charts.clear()
+        """Clear all registered templates"""
+        cls._templates.clear()

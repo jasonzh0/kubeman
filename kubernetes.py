@@ -1,121 +1,462 @@
-from abc import ABC, abstractmethod
 import os
 import yaml
-from kubeman.git import GitManager
+from typing import Any, Optional
+from kubeman.template import Template
 
 
-class KubernetesResource(ABC):
+class KubernetesResource(Template):
     """
-    Abstract base class for managing raw Kubernetes resources without Helm.
-    This class provides a simplified interface for projects that don't need Helm
-    but still want ArgoCD Application generation and manifest management.
+    Class for managing raw Kubernetes resources without Helm.
+
+    This class provides two usage patterns:
+
+    1. **Direct instantiation with helper methods**: Create resources using convenience
+       methods like add_deployment(), add_service(), etc.
+
+    2. **Subclass and override manifests()**: For custom resource generation logic,
+       subclass and implement the manifests() method directly.
+
+    Both patterns support ArgoCD Application generation and manifest management.
     """
 
     def __init__(self):
-        pass
+        self._manifests: list[dict] = []
+        self._name: Optional[str] = None
+        self._namespace: Optional[str] = None
 
     @property
-    @abstractmethod
     def name(self) -> str:
         """Return the name of the resource collection"""
-        pass
+        if self._name is None:
+            # Use class name in kebab-case as default
+            class_name = self.__class__.__name__
+            # Convert CamelCase to kebab-case
+            name = "".join(["-" + c.lower() if c.isupper() else c for c in class_name]).lstrip("-")
+            self._name = name.replace("_", "-")
+        return self._name
+
+    @name.setter
+    def name(self, value: str) -> None:
+        """Set the name for the resource collection"""
+        self._name = value
 
     @property
-    @abstractmethod
     def namespace(self) -> str:
         """Return the namespace where resources should be deployed"""
-        pass
+        if self._namespace is None:
+            raise ValueError("Namespace must be set before calling render()")
+        return self._namespace
 
-    @abstractmethod
+    @namespace.setter
+    def namespace(self, value: str) -> None:
+        """Set the namespace for resources"""
+        self._namespace = value
+
     def manifests(self) -> list[dict]:
-        """Return list of Kubernetes manifest dictionaries to be rendered"""
-        pass
+        """
+        Return list of Kubernetes manifest dictionaries to be rendered.
 
-    @staticmethod
-    def manifests_dir() -> str:
-        """Return the base directory for manifests"""
-        return os.path.abspath(os.path.join(os.path.dirname(__file__), "../../manifests"))
+        Override this method in subclasses for custom manifest generation,
+        or use the helper methods (add_deployment, add_service, etc.) to build manifests.
+        """
+        return self._manifests
 
-    def argo_ignore_spec(self) -> list:
-        """Return any ignore specs for ArgoCD application. Empty list by default."""
-        return []
+    def add_namespace(
+        self,
+        name: str,
+        labels: Optional[dict[str, str]] = None,
+        annotations: Optional[dict[str, str]] = None,
+    ) -> None:
+        """Add a Namespace resource"""
+        manifest = {
+            "apiVersion": "v1",
+            "kind": "Namespace",
+            "metadata": {"name": name},
+        }
+        if labels:
+            manifest["metadata"]["labels"] = labels
+        if annotations:
+            manifest["metadata"]["annotations"] = annotations
+        self._manifests.append(manifest)
 
-    def application_repo_url(self) -> str:
-        """Return the repository URL for ArgoCD applications. Override to customize."""
-        return os.getenv("ARGOCD_APP_REPO_URL", "")
+    def add_configmap(
+        self,
+        name: str,
+        namespace: str,
+        data: Optional[dict[str, str]] = None,
+        binary_data: Optional[dict[str, str]] = None,
+        labels: Optional[dict[str, str]] = None,
+        annotations: Optional[dict[str, str]] = None,
+    ) -> None:
+        """Add a ConfigMap resource"""
+        manifest = {
+            "apiVersion": "v1",
+            "kind": "ConfigMap",
+            "metadata": {"name": name, "namespace": namespace},
+        }
+        if labels:
+            manifest["metadata"]["labels"] = labels
+        if annotations:
+            manifest["metadata"]["annotations"] = annotations
+        if data:
+            manifest["data"] = data
+        if binary_data:
+            manifest["binaryData"] = binary_data
+        self._manifests.append(manifest)
 
-    def application_target_revision(self) -> str:
-        """Return the target revision for ArgoCD applications. Override to customize."""
-        return GitManager().fetch_branch_name()
+    def add_secret(
+        self,
+        name: str,
+        namespace: str,
+        data: Optional[dict[str, str]] = None,
+        string_data: Optional[dict[str, str]] = None,
+        secret_type: str = "Opaque",
+        labels: Optional[dict[str, str]] = None,
+        annotations: Optional[dict[str, str]] = None,
+    ) -> None:
+        """Add a Secret resource"""
+        manifest = {
+            "apiVersion": "v1",
+            "kind": "Secret",
+            "metadata": {"name": name, "namespace": namespace},
+            "type": secret_type,
+        }
+        if labels:
+            manifest["metadata"]["labels"] = labels
+        if annotations:
+            manifest["metadata"]["annotations"] = annotations
+        if data:
+            manifest["data"] = data
+        if string_data:
+            manifest["stringData"] = string_data
+        self._manifests.append(manifest)
 
-    def managed_namespace_metadata(self) -> dict:
-        """Return managed namespace metadata labels. Override to customize."""
-        return {}
-
-    def generate_application(self) -> dict:
-        """Generate the ArgoCD Application manifest for this resource"""
-        repo_url = self.application_repo_url()
-        if not repo_url:
-            raise ValueError(
-                "application_repo_url() must return a valid repository URL, "
-                "or set ARGOCD_APP_REPO_URL environment variable"
-            )
-
-        app = {
-            "apiVersion": "argoproj.io/v1alpha1",
-            "kind": "Application",
-            "metadata": {
-                "name": self.name,
-                "namespace": "argocd",  # ArgoCD applications always live in argocd namespace
-            },
+    def add_persistent_volume_claim(
+        self,
+        name: str,
+        namespace: str,
+        access_modes: list[str],
+        storage: str,
+        storage_class_name: Optional[str] = None,
+        volume_mode: str = "Filesystem",
+        labels: Optional[dict[str, str]] = None,
+        annotations: Optional[dict[str, str]] = None,
+    ) -> None:
+        """Add a PersistentVolumeClaim resource"""
+        manifest = {
+            "apiVersion": "v1",
+            "kind": "PersistentVolumeClaim",
+            "metadata": {"name": name, "namespace": namespace},
             "spec": {
-                "project": "default",
-                "source": {
-                    "repoURL": repo_url,
-                    "targetRevision": self.application_target_revision(),
-                    "path": f"{self.name}",
+                "accessModes": access_modes,
+                "resources": {"requests": {"storage": storage}},
+                "volumeMode": volume_mode,
+            },
+        }
+        if labels:
+            manifest["metadata"]["labels"] = labels
+        if annotations:
+            manifest["metadata"]["annotations"] = annotations
+        if storage_class_name:
+            manifest["spec"]["storageClassName"] = storage_class_name
+        self._manifests.append(manifest)
+
+    def add_deployment(
+        self,
+        name: str,
+        namespace: str,
+        replicas: int,
+        containers: list[dict[str, Any]],
+        labels: Optional[dict[str, str]] = None,
+        annotations: Optional[dict[str, str]] = None,
+        selector: Optional[dict[str, str]] = None,
+        volumes: Optional[list[dict[str, Any]]] = None,
+        strategy_type: Optional[str] = None,
+        init_containers: Optional[list[dict[str, Any]]] = None,
+        service_account_name: Optional[str] = None,
+        security_context: Optional[dict[str, Any]] = None,
+    ) -> None:
+        """Add a Deployment resource"""
+        # Use labels as selector if not provided
+        pod_labels = labels or {}
+        pod_selector = selector or pod_labels
+
+        manifest = {
+            "apiVersion": "apps/v1",
+            "kind": "Deployment",
+            "metadata": {"name": name, "namespace": namespace},
+            "spec": {
+                "replicas": replicas,
+                "selector": {"matchLabels": pod_selector},
+                "template": {
+                    "metadata": {"labels": pod_labels},
+                    "spec": {"containers": containers},
                 },
-                "destination": {
-                    "server": "https://kubernetes.default.svc",
-                    "namespace": self.namespace,
-                },
-                "syncPolicy": {
-                    "automated": {
-                        "prune": True,
-                        "selfHeal": True,
-                    },
-                    "syncOptions": ["CreateNamespace=true", "ServerSideApply=true"],
-                },
-                "ignoreDifferences": self.argo_ignore_spec(),
             },
         }
 
-        # Add managed namespace metadata if provided
-        managed_metadata = self.managed_namespace_metadata()
-        if managed_metadata:
-            app["spec"]["syncPolicy"]["managedNamespaceMetadata"] = {"labels": managed_metadata}
+        if labels:
+            manifest["metadata"]["labels"] = labels
+        if annotations:
+            manifest["metadata"]["annotations"] = annotations
+        if volumes:
+            manifest["spec"]["template"]["spec"]["volumes"] = volumes
+        if strategy_type:
+            manifest["spec"]["strategy"] = {"type": strategy_type}
+        if init_containers:
+            manifest["spec"]["template"]["spec"]["initContainers"] = init_containers
+        if service_account_name:
+            manifest["spec"]["template"]["spec"]["serviceAccountName"] = service_account_name
+        if security_context:
+            manifest["spec"]["template"]["spec"]["securityContext"] = security_context
 
-        return app
+        self._manifests.append(manifest)
 
-    def apps_subdirectory(self) -> str:
-        """Return the subdirectory name for applications. Override to customize."""
-        return os.getenv("ARGOCD_APPS_SUBDIR", "apps")
+    def add_service(
+        self,
+        name: str,
+        namespace: str,
+        selector: dict[str, str],
+        ports: list[dict[str, Any]],
+        service_type: str = "ClusterIP",
+        labels: Optional[dict[str, str]] = None,
+        annotations: Optional[dict[str, str]] = None,
+        cluster_ip: Optional[str] = None,
+        external_traffic_policy: Optional[str] = None,
+    ) -> None:
+        """Add a Service resource"""
+        manifest = {
+            "apiVersion": "v1",
+            "kind": "Service",
+            "metadata": {"name": name, "namespace": namespace},
+            "spec": {
+                "type": service_type,
+                "selector": selector,
+                "ports": ports,
+            },
+        }
+        if labels:
+            manifest["metadata"]["labels"] = labels
+        if annotations:
+            manifest["metadata"]["annotations"] = annotations
+        if cluster_ip:
+            manifest["spec"]["clusterIP"] = cluster_ip
+        if external_traffic_policy:
+            manifest["spec"]["externalTrafficPolicy"] = external_traffic_policy
+        self._manifests.append(manifest)
+
+    def add_statefulset(
+        self,
+        name: str,
+        namespace: str,
+        replicas: int,
+        service_name: str,
+        containers: list[dict[str, Any]],
+        volume_claim_templates: Optional[list[dict[str, Any]]] = None,
+        labels: Optional[dict[str, str]] = None,
+        annotations: Optional[dict[str, str]] = None,
+        selector: Optional[dict[str, str]] = None,
+        volumes: Optional[list[dict[str, Any]]] = None,
+        init_containers: Optional[list[dict[str, Any]]] = None,
+        service_account_name: Optional[str] = None,
+        security_context: Optional[dict[str, Any]] = None,
+    ) -> None:
+        """Add a StatefulSet resource"""
+        pod_labels = labels or {}
+        pod_selector = selector or pod_labels
+
+        manifest = {
+            "apiVersion": "apps/v1",
+            "kind": "StatefulSet",
+            "metadata": {"name": name, "namespace": namespace},
+            "spec": {
+                "serviceName": service_name,
+                "replicas": replicas,
+                "selector": {"matchLabels": pod_selector},
+                "template": {
+                    "metadata": {"labels": pod_labels},
+                    "spec": {"containers": containers},
+                },
+            },
+        }
+
+        if labels:
+            manifest["metadata"]["labels"] = labels
+        if annotations:
+            manifest["metadata"]["annotations"] = annotations
+        if volumes:
+            manifest["spec"]["template"]["spec"]["volumes"] = volumes
+        if volume_claim_templates:
+            manifest["spec"]["volumeClaimTemplates"] = volume_claim_templates
+        if init_containers:
+            manifest["spec"]["template"]["spec"]["initContainers"] = init_containers
+        if service_account_name:
+            manifest["spec"]["template"]["spec"]["serviceAccountName"] = service_account_name
+        if security_context:
+            manifest["spec"]["template"]["spec"]["securityContext"] = security_context
+
+        self._manifests.append(manifest)
+
+    def add_ingress(
+        self,
+        name: str,
+        namespace: str,
+        rules: list[dict[str, Any]],
+        ingress_class_name: Optional[str] = None,
+        tls: Optional[list[dict[str, Any]]] = None,
+        labels: Optional[dict[str, str]] = None,
+        annotations: Optional[dict[str, str]] = None,
+    ) -> None:
+        """Add an Ingress resource"""
+        manifest = {
+            "apiVersion": "networking.k8s.io/v1",
+            "kind": "Ingress",
+            "metadata": {"name": name, "namespace": namespace},
+            "spec": {"rules": rules},
+        }
+        if labels:
+            manifest["metadata"]["labels"] = labels
+        if annotations:
+            manifest["metadata"]["annotations"] = annotations
+        if ingress_class_name:
+            manifest["spec"]["ingressClassName"] = ingress_class_name
+        if tls:
+            manifest["spec"]["tls"] = tls
+        self._manifests.append(manifest)
+
+    def add_service_account(
+        self,
+        name: str,
+        namespace: str,
+        labels: Optional[dict[str, str]] = None,
+        annotations: Optional[dict[str, str]] = None,
+    ) -> None:
+        """Add a ServiceAccount resource"""
+        manifest = {
+            "apiVersion": "v1",
+            "kind": "ServiceAccount",
+            "metadata": {"name": name, "namespace": namespace},
+        }
+        if labels:
+            manifest["metadata"]["labels"] = labels
+        if annotations:
+            manifest["metadata"]["annotations"] = annotations
+        self._manifests.append(manifest)
+
+    def add_role(
+        self,
+        name: str,
+        namespace: str,
+        rules: list[dict[str, Any]],
+        labels: Optional[dict[str, str]] = None,
+        annotations: Optional[dict[str, str]] = None,
+    ) -> None:
+        """Add a Role resource"""
+        manifest = {
+            "apiVersion": "rbac.authorization.k8s.io/v1",
+            "kind": "Role",
+            "metadata": {"name": name, "namespace": namespace},
+            "rules": rules,
+        }
+        if labels:
+            manifest["metadata"]["labels"] = labels
+        if annotations:
+            manifest["metadata"]["annotations"] = annotations
+        self._manifests.append(manifest)
+
+    def add_role_binding(
+        self,
+        name: str,
+        namespace: str,
+        role_name: str,
+        subjects: list[dict[str, Any]],
+        role_kind: str = "Role",
+        labels: Optional[dict[str, str]] = None,
+        annotations: Optional[dict[str, str]] = None,
+    ) -> None:
+        """Add a RoleBinding resource"""
+        manifest = {
+            "apiVersion": "rbac.authorization.k8s.io/v1",
+            "kind": "RoleBinding",
+            "metadata": {"name": name, "namespace": namespace},
+            "roleRef": {
+                "apiGroup": "rbac.authorization.k8s.io",
+                "kind": role_kind,
+                "name": role_name,
+            },
+            "subjects": subjects,
+        }
+        if labels:
+            manifest["metadata"]["labels"] = labels
+        if annotations:
+            manifest["metadata"]["annotations"] = annotations
+        self._manifests.append(manifest)
+
+    def add_cluster_role(
+        self,
+        name: str,
+        rules: list[dict[str, Any]],
+        labels: Optional[dict[str, str]] = None,
+        annotations: Optional[dict[str, str]] = None,
+    ) -> None:
+        """Add a ClusterRole resource"""
+        manifest = {
+            "apiVersion": "rbac.authorization.k8s.io/v1",
+            "kind": "ClusterRole",
+            "metadata": {"name": name},
+            "rules": rules,
+        }
+        if labels:
+            manifest["metadata"]["labels"] = labels
+        if annotations:
+            manifest["metadata"]["annotations"] = annotations
+        self._manifests.append(manifest)
+
+    def add_cluster_role_binding(
+        self,
+        name: str,
+        role_name: str,
+        subjects: list[dict[str, Any]],
+        labels: Optional[dict[str, str]] = None,
+        annotations: Optional[dict[str, str]] = None,
+    ) -> None:
+        """Add a ClusterRoleBinding resource"""
+        manifest = {
+            "apiVersion": "rbac.authorization.k8s.io/v1",
+            "kind": "ClusterRoleBinding",
+            "metadata": {"name": name},
+            "roleRef": {
+                "apiGroup": "rbac.authorization.k8s.io",
+                "kind": "ClusterRole",
+                "name": role_name,
+            },
+            "subjects": subjects,
+        }
+        if labels:
+            manifest["metadata"]["labels"] = labels
+        if annotations:
+            manifest["metadata"]["annotations"] = annotations
+        self._manifests.append(manifest)
+
+    def add_custom_resource(self, manifest: dict[str, Any]) -> None:
+        """Add a custom Kubernetes resource manifest"""
+        if not manifest.get("apiVersion"):
+            raise ValueError("Manifest must have apiVersion")
+        if not manifest.get("kind"):
+            raise ValueError("Manifest must have kind")
+        if not manifest.get("metadata") or not manifest["metadata"].get("name"):
+            raise ValueError("Manifest must have metadata.name")
+        self._manifests.append(manifest)
 
     def render(self) -> None:
         """
         Render Kubernetes manifests and ArgoCD Application.
         """
-        # Ensure apps directory exists
-        apps_dir = os.path.join(self.manifests_dir(), self.apps_subdirectory())
-        os.makedirs(apps_dir, exist_ok=True)
-
         # Render manifests
         self.render_manifests()
 
         # Write Application manifest
-        app_file = os.path.join(apps_dir, f"{self.name}-application.yaml")
-        with open(app_file, "w") as f:
-            yaml.dump(self.generate_application(), f)
+        self._write_application()
 
     def render_manifests(self) -> None:
         """
