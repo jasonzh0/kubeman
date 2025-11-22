@@ -415,6 +415,45 @@ class TestKubernetesResource:
         assert "volumes" in manifests[0]["spec"]["template"]["spec"]
         assert manifests[0]["spec"]["template"]["spec"]["volumes"][0]["name"] == "data"
 
+    def test_deployment_with_init_containers(self):
+        """Test deployment with initContainers."""
+        resources = KubernetesResource()
+        resources.namespace = "test"
+
+        resources.add_deployment(
+            name="test-deployment",
+            namespace="test",
+            replicas=1,
+            labels={"app": "test"},
+            containers=[
+                {
+                    "name": "app",
+                    "image": "nginx:latest",
+                }
+            ],
+            init_containers=[
+                {
+                    "name": "init-db",
+                    "image": "busybox:latest",
+                    "command": ["sh", "-c", "echo Initializing database"],
+                },
+                {
+                    "name": "init-config",
+                    "image": "busybox:latest",
+                    "command": ["sh", "-c", "echo Loading config"],
+                },
+            ],
+        )
+
+        manifests = resources.manifests()
+        assert len(manifests) == 1
+        assert "initContainers" in manifests[0]["spec"]["template"]["spec"]
+        init_containers = manifests[0]["spec"]["template"]["spec"]["initContainers"]
+        assert len(init_containers) == 2
+        assert init_containers[0]["name"] == "init-db"
+        assert init_containers[1]["name"] == "init-config"
+        assert init_containers[0]["image"] == "busybox:latest"
+
     def test_service_node_port(self):
         """Test service with NodePort."""
         resources = KubernetesResource()

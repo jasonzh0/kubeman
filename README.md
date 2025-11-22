@@ -211,6 +211,13 @@ class DogBreedsDbChart(KubernetesResource):
             volumes=[
                 {"name": "postgres-storage", "persistentVolumeClaim": {"claimName": "dog-breeds-db-pvc"}},
             ],
+            init_containers=[
+                {
+                    "name": "init-db",
+                    "image": "busybox:latest",
+                    "command": ["sh", "-c", "echo Initializing database schema"],
+                }
+            ],
         )
 
         # Add Service
