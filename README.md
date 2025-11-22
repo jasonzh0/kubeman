@@ -1,6 +1,6 @@
 # Kubeman
 
-A Python library for rendering Helm charts and ArgoCD applications.
+A Python library for rendering Helm charts and Kubernetes resources with automatic ArgoCD Application generation. Features an abstract Template base class for consistent template management.
 
 ## Features
 
