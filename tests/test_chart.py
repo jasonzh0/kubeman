@@ -1,8 +1,10 @@
-"""Unit tests for HelmChart abstract class."""
+"""Unit tests for HelmChart and KubernetesResource abstract classes."""
+
 import os
 import pytest
 from unittest.mock import Mock, patch
 from kubeman.chart import HelmChart
+from kubeman.kubernetes import KubernetesResource
 from kubeman.git import GitManager
 
 
@@ -315,3 +317,233 @@ class TestHelmChart:
         with patch.object(chart, "manifests_dir", return_value=str(tmp_path)):
             with pytest.raises(ValueError, match="already exists"):
                 chart.render_extra()
+
+
+class ConcreteKubernetesResource(KubernetesResource):
+    """Concrete implementation of KubernetesResource for testing."""
+
+    @property
+    def name(self):
+        return "test-resource"
+
+    @property
+    def namespace(self):
+        return "test-namespace"
+
+    def manifests(self):
+        return [
+            {
+                "apiVersion": "v1",
+                "kind": "ConfigMap",
+                "metadata": {"name": "test-config", "namespace": "test-namespace"},
+                "data": {"key": "value"},
+            },
+            {
+                "apiVersion": "apps/v1",
+                "kind": "Deployment",
+                "metadata": {"name": "test-deployment", "namespace": "test-namespace"},
+                "spec": {
+                    "replicas": 3,
+                    "selector": {"matchLabels": {"app": "test"}},
+                    "template": {
+                        "metadata": {"labels": {"app": "test"}},
+                        "spec": {"containers": [{"name": "test", "image": "nginx:latest"}]},
+                    },
+                },
+            },
+        ]
+
+
+class TestKubernetesResource:
+    """Test cases for KubernetesResource class."""
+
+    def test_name_property(self):
+        """Test that name property is abstract and must be implemented."""
+        resource = ConcreteKubernetesResource()
+        assert resource.name == "test-resource"
+
+    def test_namespace_property(self):
+        """Test that namespace property is abstract and must be implemented."""
+        resource = ConcreteKubernetesResource()
+        assert resource.namespace == "test-namespace"
+
+    def test_manifests_method(self):
+        """Test that manifests method is abstract and must be implemented."""
+        resource = ConcreteKubernetesResource()
+        manifests = resource.manifests()
+        assert len(manifests) == 2
+        assert manifests[0]["kind"] == "ConfigMap"
+        assert manifests[1]["kind"] == "Deployment"
+
+    def test_manifests_dir(self):
+        """Test manifests_dir static method."""
+        dir_path = KubernetesResource.manifests_dir()
+        assert os.path.isabs(dir_path)
+        assert "manifests" in dir_path
+
+    def test_argo_ignore_spec_default(self):
+        """Test that argo_ignore_spec returns empty list by default."""
+        resource = ConcreteKubernetesResource()
+        assert resource.argo_ignore_spec() == []
+
+    def test_application_repo_url_from_env(self, monkeypatch):
+        """Test application_repo_url reads from environment."""
+        resource = ConcreteKubernetesResource()
+        monkeypatch.setenv("ARGOCD_APP_REPO_URL", "https://github.com/test/repo")
+        assert resource.application_repo_url() == "https://github.com/test/repo"
+
+    def test_application_repo_url_default(self, monkeypatch):
+        """Test application_repo_url returns empty string if not set."""
+        resource = ConcreteKubernetesResource()
+        monkeypatch.delenv("ARGOCD_APP_REPO_URL", raising=False)
+        assert resource.application_repo_url() == ""
+
+    def test_application_target_revision(self, monkeypatch):
+        """Test application_target_revision uses GitManager."""
+        resource = ConcreteKubernetesResource()
+        monkeypatch.setenv("STABLE_GIT_BRANCH", "main")
+        with patch("builtins.print"):
+            with patch.object(GitManager, "fetch_branch_name", return_value="main"):
+                assert resource.application_target_revision() == "main"
+
+    def test_managed_namespace_metadata_default(self):
+        """Test that managed_namespace_metadata returns empty dict by default."""
+        resource = ConcreteKubernetesResource()
+        assert resource.managed_namespace_metadata() == {}
+
+    def test_generate_application(self, monkeypatch):
+        """Test generating ArgoCD Application manifest."""
+        resource = ConcreteKubernetesResource()
+        monkeypatch.setenv("ARGOCD_APP_REPO_URL", "https://github.com/test/repo")
+        monkeypatch.setenv("STABLE_GIT_BRANCH", "main")
+
+        with patch.object(GitManager, "fetch_branch_name", return_value="main"):
+            app = resource.generate_application()
+
+        assert app["apiVersion"] == "argoproj.io/v1alpha1"
+        assert app["kind"] == "Application"
+        assert app["metadata"]["name"] == "test-resource"
+        assert app["metadata"]["namespace"] == "argocd"
+        assert app["spec"]["source"]["repoURL"] == "https://github.com/test/repo"
+        assert app["spec"]["source"]["targetRevision"] == "main"
+        assert app["spec"]["source"]["path"] == "test-resource"
+        assert app["spec"]["destination"]["namespace"] == "test-namespace"
+        assert app["spec"]["syncPolicy"]["automated"]["prune"] is True
+        assert app["spec"]["syncPolicy"]["automated"]["selfHeal"] is True
+
+    def test_generate_application_no_repo_url(self, monkeypatch):
+        """Test that generate_application raises error if no repo URL."""
+        resource = ConcreteKubernetesResource()
+        monkeypatch.delenv("ARGOCD_APP_REPO_URL", raising=False)
+
+        with pytest.raises(ValueError, match="application_repo_url"):
+            resource.generate_application()
+
+    def test_generate_application_with_managed_namespace_metadata(self, monkeypatch):
+        """Test generating application with managed namespace metadata."""
+
+        class ResourceWithMetadata(ConcreteKubernetesResource):
+            def managed_namespace_metadata(self):
+                return {"label1": "value1", "label2": "value2"}
+
+        resource = ResourceWithMetadata()
+        monkeypatch.setenv("ARGOCD_APP_REPO_URL", "https://github.com/test/repo")
+        monkeypatch.setenv("STABLE_GIT_BRANCH", "main")
+
+        with patch.object(GitManager, "fetch_branch_name", return_value="main"):
+            app = resource.generate_application()
+
+        assert "managedNamespaceMetadata" in app["spec"]["syncPolicy"]
+        assert app["spec"]["syncPolicy"]["managedNamespaceMetadata"]["labels"] == {
+            "label1": "value1",
+            "label2": "value2",
+        }
+
+    def test_apps_subdirectory_from_env(self, monkeypatch):
+        """Test apps_subdirectory reads from environment."""
+        resource = ConcreteKubernetesResource()
+        monkeypatch.setenv("ARGOCD_APPS_SUBDIR", "custom-apps")
+        assert resource.apps_subdirectory() == "custom-apps"
+
+    def test_apps_subdirectory_default(self, monkeypatch):
+        """Test apps_subdirectory defaults to 'apps'."""
+        resource = ConcreteKubernetesResource()
+        monkeypatch.delenv("ARGOCD_APPS_SUBDIR", raising=False)
+        assert resource.apps_subdirectory() == "apps"
+
+    def test_render_manifests_with_valid_manifests(self, tmp_path):
+        """Test rendering manifests."""
+        resource = ConcreteKubernetesResource()
+        with patch.object(resource, "manifests_dir", return_value=str(tmp_path)):
+            resource.render_manifests()
+            # Check that both manifests were created
+            config_file = tmp_path / "test-resource" / "test-config-configmap.yaml"
+            deployment_file = tmp_path / "test-resource" / "test-deployment-deployment.yaml"
+            assert config_file.exists()
+            assert deployment_file.exists()
+
+    def test_render_manifests_no_metadata(self):
+        """Test that render_manifests raises error if manifest has no metadata."""
+
+        class ResourceWithInvalidManifests(ConcreteKubernetesResource):
+            def manifests(self):
+                return [{"kind": "ConfigMap"}]
+
+        resource = ResourceWithInvalidManifests()
+        with pytest.raises(ValueError, match="no metadata"):
+            resource.render_manifests()
+
+    def test_render_manifests_no_kind(self):
+        """Test that render_manifests raises error if manifest has no kind."""
+
+        class ResourceWithInvalidManifests(ConcreteKubernetesResource):
+            def manifests(self):
+                return [{"metadata": {"name": "test"}}]
+
+        resource = ResourceWithInvalidManifests()
+        with pytest.raises(ValueError, match="no kind"):
+            resource.render_manifests()
+
+    def test_render_manifests_duplicate_file(self, tmp_path):
+        """Test that render_manifests raises error if file already exists."""
+        resource = ConcreteKubernetesResource()
+        output_dir = tmp_path / "test-resource"
+        output_dir.mkdir(parents=True)
+        (output_dir / "test-config-configmap.yaml").write_text("existing")
+
+        with patch.object(resource, "manifests_dir", return_value=str(tmp_path)):
+            with pytest.raises(ValueError, match="already exists"):
+                resource.render_manifests()
+
+    def test_render_manifests_empty_list(self, tmp_path, capsys):
+        """Test that render_manifests handles empty manifest list."""
+
+        class ResourceWithNoManifests(ConcreteKubernetesResource):
+            def manifests(self):
+                return []
+
+        resource = ResourceWithNoManifests()
+        with patch.object(resource, "manifests_dir", return_value=str(tmp_path)):
+            resource.render_manifests()
+            captured = capsys.readouterr()
+            assert "No manifests for test-resource" in captured.out
+
+    def test_render(self, tmp_path, monkeypatch):
+        """Test full render process."""
+        resource = ConcreteKubernetesResource()
+        monkeypatch.setenv("ARGOCD_APP_REPO_URL", "https://github.com/test/repo")
+        monkeypatch.setenv("STABLE_GIT_BRANCH", "main")
+
+        with patch.object(resource, "manifests_dir", return_value=str(tmp_path)):
+            with patch.object(GitManager, "fetch_branch_name", return_value="main"):
+                resource.render()
+
+        # Check that manifests were created
+        config_file = tmp_path / "test-resource" / "test-config-configmap.yaml"
+        deployment_file = tmp_path / "test-resource" / "test-deployment-deployment.yaml"
+        assert config_file.exists()
+        assert deployment_file.exists()
+
+        # Check that Application manifest was created
+        app_file = tmp_path / "apps" / "test-resource-application.yaml"
+        assert app_file.exists()

@@ -1,4 +1,5 @@
 """Unit tests for GitManager."""
+
 import os
 import sys
 import pytest

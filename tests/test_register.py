@@ -1,4 +1,5 @@
 """Unit tests for ChartRegistry."""
+
 import pytest
 from kubeman.register import ChartRegistry
 from kubeman.chart import HelmChart

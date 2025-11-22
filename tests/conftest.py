@@ -1,4 +1,5 @@
 """Pytest configuration and shared fixtures."""
+
 import os
 import sys
 from unittest.mock import Mock, patch
