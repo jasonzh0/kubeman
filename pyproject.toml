@@ -41,6 +41,9 @@ dev = [
 [tool.hatch.build.targets.wheel]
 packages = ["kubeman"]
 
+[tool.hatch.build]
+include = ["kubeman/**/*.py"]
+
 [tool.black]
 line-length = 100
 target-version = ['py38', 'py39', 'py310', 'py311', 'py312']
