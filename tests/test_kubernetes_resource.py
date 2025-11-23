@@ -2,6 +2,7 @@
 
 import pytest
 from kubeman import KubernetesResource, TemplateRegistry
+from kubeman.resource_utils import CLUSTER_SCOPED_KINDS, is_cluster_scoped
 
 
 class TestKubernetesResource:
@@ -471,3 +472,91 @@ class TestKubernetesResource:
         assert len(manifests) == 1
         assert manifests[0]["spec"]["type"] == "NodePort"
         assert manifests[0]["spec"]["ports"][0]["nodePort"] == 30080
+
+    def test_default_namespace_behavior(self):
+        """Test that helper methods use self.namespace as default."""
+        resources = KubernetesResource()
+        resources.namespace = "default-ns"
+
+        # Test add_configmap without namespace parameter
+        resources.add_configmap(
+            name="test-config",
+            data={"key": "value"},
+        )
+
+        manifests = resources.manifests()
+        assert len(manifests) == 1
+        assert manifests[0]["metadata"]["namespace"] == "default-ns"
+
+    def test_namespace_override(self):
+        """Test that namespace parameter can override self.namespace."""
+        resources = KubernetesResource()
+        resources.namespace = "default-ns"
+
+        # Test add_configmap with explicit namespace
+        resources.add_configmap(
+            name="test-config",
+            namespace="override-ns",
+            data={"key": "value"},
+        )
+
+        manifests = resources.manifests()
+        assert len(manifests) == 1
+        assert manifests[0]["metadata"]["namespace"] == "override-ns"
+
+    def test_add_namespace_default_name(self):
+        """Test that add_namespace uses self.namespace as default name."""
+        resources = KubernetesResource()
+        resources.namespace = "test-ns"
+
+        resources.add_namespace()
+
+        manifests = resources.manifests()
+        assert len(manifests) == 1
+        assert manifests[0]["kind"] == "Namespace"
+        assert manifests[0]["metadata"]["name"] == "test-ns"
+
+    def test_missing_namespace_error(self):
+        """Test that missing namespace raises appropriate error."""
+        resources = KubernetesResource()
+
+        # Should raise error when namespace is not set and not provided
+        with pytest.raises(ValueError, match="Namespace must be set"):
+            resources.add_configmap(
+                name="test-config",
+                data={"key": "value"},
+            )
+
+    def test_deployment_with_default_namespace(self):
+        """Test deployment using default namespace."""
+        resources = KubernetesResource()
+        resources.namespace = "test"
+
+        resources.add_deployment(
+            name="test-deployment",
+            containers=[
+                {
+                    "name": "nginx",
+                    "image": "nginx:latest",
+                }
+            ],
+        )
+
+        manifests = resources.manifests()
+        assert len(manifests) == 1
+        assert manifests[0]["metadata"]["namespace"] == "test"
+
+    def test_service_with_default_namespace(self):
+        """Test service using default namespace."""
+        resources = KubernetesResource()
+        resources.namespace = "test"
+
+        resources.add_service(
+            name="test-service",
+            selector={"app": "test"},
+            ports=[{"port": 80}],
+        )
+
+        manifests = resources.manifests()
+        assert len(manifests) == 1
+        assert manifests[0]["metadata"]["namespace"] == "test"

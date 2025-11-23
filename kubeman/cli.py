@@ -15,6 +15,7 @@ import yaml
 from kubeman.register import TemplateRegistry
 from kubeman.template import Template
 from kubeman.executor import get_executor
+from kubeman.resource_utils import CLUSTER_SCOPED_KINDS
 
 
 def load_templates_file(file_path: str) -> None:
@@ -209,16 +210,8 @@ def _extract_namespace_from_yaml(yaml_file: Path) -> Optional[str]:
 
                 # Check if this is a cluster-scoped resource
                 kind = doc.get("kind", "")
-                cluster_scoped_kinds = [
-                    "CustomResourceDefinition",
-                    "ClusterRole",
-                    "ClusterRoleBinding",
-                    "Namespace",
-                    "PersistentVolume",
-                    "StorageClass",
-                ]
 
-                if kind in cluster_scoped_kinds:
+                if kind in CLUSTER_SCOPED_KINDS:
                     continue  # Cluster-scoped, no namespace
 
                 # Extract namespace from metadata

@@ -4,6 +4,7 @@ import tempfile
 import yaml
 from kubeman.template import Template
 from kubeman.executor import get_executor
+from kubeman.resource_utils import CLUSTER_SCOPED_KINDS
 
 
 class HelmChart(Template):
@@ -152,14 +153,6 @@ class HelmChart(Template):
                     # Parse YAML documents and add namespace to resources that don't have it
                     documents = list(yaml.safe_load_all(output_content))
                     processed_docs = []
-                    cluster_scoped_kinds = [
-                        "CustomResourceDefinition",
-                        "ClusterRole",
-                        "ClusterRoleBinding",
-                        "Namespace",
-                        "PersistentVolume",
-                        "StorageClass",
-                    ]
 
                     for doc in documents:
                         if doc is None:
@@ -172,7 +165,7 @@ class HelmChart(Template):
                         metadata = doc.get("metadata", {})
 
                         # Skip cluster-scoped resources
-                        if kind in cluster_scoped_kinds:
+                        if kind in CLUSTER_SCOPED_KINDS:
                             processed_docs.append(doc)
                             continue
 

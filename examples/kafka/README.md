@@ -1,15 +1,15 @@
 # Kafka Deployment Example
 
-This example demonstrates how to deploy Apache Kafka to Kubernetes using kubeman with the Bitnami Kafka Helm chart.
+This example demonstrates how to deploy Apache Kafka to Kubernetes using kubeman with the [Strimzi Kafka Operator](https://github.com/strimzi/strimzi-kafka-operator).
 
 ## Overview
 
 The example includes:
-- **Kafka cluster** with 3 replicas for high availability
-- **Zookeeper** cluster with 3 replicas (required for Kafka coordination)
-- **Persistent storage** for both Kafka and Zookeeper
+- **Strimzi Cluster Operator** for managing Kafka clusters via CRDs
+- **Kafka cluster** with 3 broker replicas and 3 controller replicas for high availability
+- **KRaft mode** (no Zookeeper required - uses Kafka's built-in Raft consensus)
+- **Persistent storage** for both Kafka brokers and controllers
 - **Resource limits** configured for production-like workloads
-- **Metrics** enabled for monitoring (Prometheus-compatible)
 - **Stock Price Processing**: Producer and consumer services for processing live stock prices
 
 ## Prerequisites
@@ -72,7 +72,7 @@ kubeman apply --file examples/kafka/templates.py --output-dir ./custom-manifests
 ```
 
 This will:
-1. Render the Helm chart templates
+1. Render the Strimzi operator Helm chart and Kafka CRD manifests
 2. Apply all manifests to the `kafka` namespace
 3. Create the namespace if it doesn't exist
 
@@ -83,7 +83,7 @@ This will:
 Check the status of the Kafka deployment:
 
 ```bash
-# Check pods (Kafka, Zookeeper, Producer, Consumer)
+# Check pods (Kafka brokers, controllers, operator, Producer, Consumer)
 kubectl get pods -n kafka
 
 # Check services
@@ -103,44 +103,45 @@ kubectl logs -n kafka -l app=stock-price-consumer
 
 The example is configured with:
 
-- **Kafka replicas**: 3
-- **Zookeeper replicas**: 3
-- **Kafka storage**: 20Gi per pod
-- **Zookeeper storage**: 10Gi per pod
-- **Kafka resources**: 500m-2000m CPU, 1Gi-2Gi memory
-- **Zookeeper resources**: 250m-1000m CPU, 512Mi-1Gi memory
+- **Kafka broker replicas**: 3
+- **Kafka controller replicas**: 3
+- **Kafka broker storage**: 20Gi per pod
+- **Kafka controller storage**: 10Gi per pod
+- **Kafka broker resources**: 500m-2000m CPU, 1Gi-2Gi memory
+- **Kafka controller resources**: 250m-1000m CPU, 512Mi-1Gi memory
+- **Kafka version**: 4.1.0 (KRaft mode)
 
 ### Customizing the Configuration
 
-Edit `kafka_example.py` and modify the `generate_values()` method to customize:
+Edit `kafka_example.py` and modify the `manifests()` method in the `KafkaCluster` class to customize:
 
-- Replica counts
+- Replica counts for brokers and controllers
 - Storage sizes
 - Resource requests/limits
 - Kafka configuration (retention, segment size, etc.)
 - Listener configuration (internal/external access)
+- Kafka version
 
 ## Accessing Kafka
 
 ### Internal Access (within cluster)
 
 Kafka is accessible at:
-- **Service**: `kafka.kafka.svc.cluster.local:9092`
-- **Port**: 9092 (client protocol)
+- **Service**: `my-cluster-kafka-bootstrap.kafka.svc.cluster.local:9092`
+- **Port**: 9092 (plain listener)
 
-### External Access (LoadBalancer)
-
-If your cluster supports LoadBalancer services, Kafka is also exposed externally:
-- **Service**: `kafka-external.kafka.svc.cluster.local:9094`
-- **Port**: 9094
+The service name follows the pattern `{cluster-name}-kafka-bootstrap` where `my-cluster` is the Kafka cluster name defined in the CRD.
 
 ### Testing Kafka
 
-You can test Kafka using the built-in Kafka tools:
+You can test Kafka using the built-in Kafka tools. First, get the name of a Kafka broker pod:
 
 ```bash
+# Get Kafka broker pod name
+KAFKA_POD=$(kubectl get pods -n kafka -l strimzi.io/cluster=my-cluster,strimzi.io/kind=Kafka,strimzi.io/name=my-cluster-kafka -o jsonpath='{.items[0].metadata.name}')
+
 # Create a topic
-kubectl exec -it kafka-0 -n kafka -- kafka-topics.sh \
+kubectl exec -it $KAFKA_POD -n kafka -- kafka-topics.sh \
   --create \
   --bootstrap-server localhost:9092 \
   --replication-factor 3 \
@@ -148,17 +149,17 @@ kubectl exec -it kafka-0 -n kafka -- kafka-topics.sh \
   --topic test-topic
 
 # List topics
-kubectl exec -it kafka-0 -n kafka -- kafka-topics.sh \
+kubectl exec -it $KAFKA_POD -n kafka -- kafka-topics.sh \
   --list \
   --bootstrap-server localhost:9092
 
 # Produce messages
-kubectl exec -it kafka-0 -n kafka -- kafka-console-producer.sh \
+kubectl exec -it $KAFKA_POD -n kafka -- kafka-console-producer.sh \
   --bootstrap-server localhost:9092 \
   --topic test-topic
 
 # Consume messages (in another terminal)
-kubectl exec -it kafka-0 -n kafka -- kafka-console-consumer.sh \
+kubectl exec -it $KAFKA_POD -n kafka -- kafka-console-consumer.sh \
   --bootstrap-server localhost:9092 \
   --topic test-topic \
   --from-beginning
@@ -180,7 +181,7 @@ The producer service (`stock_price_producer.py`) fetches live stock prices from 
 
 **Configuration:**
 - `STOCK_SYMBOLS`: Comma-separated list of stock symbols
-- `KAFKA_BROKER`: Kafka broker address (default: `kafka.kafka.svc.cluster.local:9092`)
+- `KAFKA_BROKER`: Kafka broker address (default: `my-cluster-kafka-bootstrap.kafka.svc.cluster.local:9092`)
 - `KAFKA_TOPIC`: Kafka topic name (default: `stock-prices`)
 - `FETCH_INTERVAL`: Seconds between price fetches (default: `5`)
 
@@ -222,8 +223,11 @@ The consumer can be extended to:
 Before the producer can publish messages, you may need to create the topic:
 
 ```bash
+# Get Kafka broker pod name
+KAFKA_POD=$(kubectl get pods -n kafka -l strimzi.io/cluster=my-cluster,strimzi.io/kind=Kafka,strimzi.io/name=my-cluster-kafka -o jsonpath='{.items[0].metadata.name}')
+
 # Create the stock-prices topic
-kubectl exec -it kafka-0 -n kafka -- kafka-topics.sh \
+kubectl exec -it $KAFKA_POD -n kafka -- kafka-topics.sh \
   --create \
   --bootstrap-server localhost:9092 \
   --replication-factor 3 \
@@ -231,7 +235,7 @@ kubectl exec -it kafka-0 -n kafka -- kafka-topics.sh \
   --topic stock-prices
 
 # Verify topic was created
-kubectl exec -it kafka-0 -n kafka -- kafka-topics.sh \
+kubectl exec -it $KAFKA_POD -n kafka -- kafka-topics.sh \
   --list \
   --bootstrap-server localhost:9092
 ```
@@ -246,7 +250,8 @@ kubectl logs -n kafka -f -l app=stock-price-producer
 kubectl logs -n kafka -f -l app=stock-price-consumer
 
 # Check message count in topic
-kubectl exec -it kafka-0 -n kafka -- kafka-run-class.sh \
+KAFKA_POD=$(kubectl get pods -n kafka -l strimzi.io/cluster=my-cluster,strimzi.io/kind=Kafka,strimzi.io/name=my-cluster-kafka -o jsonpath='{.items[0].metadata.name}')
+kubectl exec -it $KAFKA_POD -n kafka -- kafka-run-class.sh \
   kafka.tools.GetOffsetShell \
   --bootstrap-server localhost:9092 \
   --topic stock-prices
@@ -285,8 +290,16 @@ To enable ArgoCD Application generation:
 
 Check pod logs:
 ```bash
-kubectl logs -n kafka kafka-0
-kubectl logs -n kafka zookeeper-0
+# Check Strimzi operator logs
+kubectl logs -n kafka -l name=strimzi-cluster-operator
+
+# Check Kafka broker logs
+kubectl logs -n kafka -l strimzi.io/cluster=my-cluster,strimzi.io/kind=Kafka,strimzi.io/name=my-cluster-kafka
+
+# Check Kafka controller logs
+kubectl logs -n kafka -l strimzi.io/cluster=my-cluster,strimzi.io/kind=Kafka,strimzi.io/name=my-cluster-controller
+
+# Check producer and consumer logs
 kubectl logs -n kafka -l app=stock-price-producer
 kubectl logs -n kafka -l app=stock-price-consumer
 ```
@@ -299,11 +312,11 @@ Ensure Kafka is running and the broker address is correct:
 kubectl get pods -n kafka
 
 # Verify Kafka service
-kubectl get svc -n kafka kafka
+kubectl get svc -n kafka my-cluster-kafka-bootstrap
 
 # Test connectivity from producer pod
 kubectl exec -it -n kafka -l app=stock-price-producer -- \
-  python -c "from kafka import KafkaProducer; p = KafkaProducer(bootstrap_servers=['kafka.kafka.svc.cluster.local:9092']); print('Connected!')"
+  python -c "from kafka import KafkaProducer; p = KafkaProducer(bootstrap_servers=['my-cluster-kafka-bootstrap.kafka.svc.cluster.local:9092']); print('Connected!')"
 ```
 
 ### Consumer not receiving messages
@@ -314,7 +327,8 @@ Check if messages are being produced:
 kubectl logs -n kafka -l app=stock-price-producer | grep Published
 
 # Verify topic exists and has messages
-kubectl exec -it kafka-0 -n kafka -- kafka-console-consumer.sh \
+KAFKA_POD=$(kubectl get pods -n kafka -l strimzi.io/cluster=my-cluster,strimzi.io/kind=Kafka,strimzi.io/name=my-cluster-kafka -o jsonpath='{.items[0].metadata.name}')
+kubectl exec -it $KAFKA_POD -n kafka -- kafka-console-consumer.sh \
   --bootstrap-server localhost:9092 \
   --topic stock-prices \
   --from-beginning \
@@ -338,6 +352,7 @@ kubectl get endpoints -n kafka
 
 ## Further Reading
 
-- [Bitnami Kafka Chart Documentation](https://github.com/bitnami/charts/tree/main/bitnami/kafka)
+- [Strimzi Kafka Operator](https://github.com/strimzi/strimzi-kafka-operator) - Official Strimzi repository
+- [Strimzi Documentation](https://strimzi.io/) - Official Strimzi documentation
 - [Apache Kafka Documentation](https://kafka.apache.org/documentation/)
 - [kubeman Documentation](../README.md)

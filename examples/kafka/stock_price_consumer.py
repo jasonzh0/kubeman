@@ -22,7 +22,6 @@ class StockPriceConsumer(KubernetesResource):
         # Add ConfigMap for consumer configuration
         self.add_configmap(
             name="stock-price-consumer-config",
-            namespace="kafka",
             data={
                 "KAFKA_BROKER": "my-cluster-kafka-bootstrap.kafka.svc.cluster.local:9092",
                 "KAFKA_TOPIC": "stock-prices",
@@ -34,9 +33,6 @@ class StockPriceConsumer(KubernetesResource):
         # Add Deployment
         self.add_deployment(
             name="stock-price-consumer",
-            namespace="kafka",
-            replicas=1,
-            labels={"app": "stock-price-consumer", "component": "consumer"},
             containers=[
                 {
                     "name": "consumer",
@@ -77,6 +73,8 @@ class StockPriceConsumer(KubernetesResource):
                     },
                 }
             ],
+            replicas=1,
+            labels={"app": "stock-price-consumer", "component": "consumer"},
         )
 
     def enable_argocd(self) -> bool:

@@ -61,17 +61,44 @@ class KubernetesResource(Template):
         """
         return self._manifests
 
+    def _get_namespace(self, namespace: Optional[str] = None) -> str:
+        """
+        Get namespace, using provided value or falling back to self.namespace.
+
+        Args:
+            namespace: Optional namespace parameter
+
+        Returns:
+            The namespace to use
+
+        Raises:
+            ValueError: If neither namespace parameter nor self.namespace is set
+        """
+        if namespace is not None:
+            return namespace
+        if self._namespace is None:
+            raise ValueError("Namespace must be set via self.namespace or provided as parameter")
+        return self._namespace
+
     def add_namespace(
         self,
-        name: str,
+        name: Optional[str] = None,
         labels: Optional[dict[str, str]] = None,
         annotations: Optional[dict[str, str]] = None,
     ) -> None:
-        """Add a Namespace resource"""
+        """
+        Add a Namespace resource.
+
+        Args:
+            name: Namespace name. Defaults to self.namespace if not provided.
+            labels: Optional labels for the namespace
+            annotations: Optional annotations for the namespace
+        """
+        namespace_name = name or self._get_namespace()
         manifest = {
             "apiVersion": "v1",
             "kind": "Namespace",
-            "metadata": {"name": name},
+            "metadata": {"name": namespace_name},
         }
         if labels:
             manifest["metadata"]["labels"] = labels
@@ -82,17 +109,18 @@ class KubernetesResource(Template):
     def add_configmap(
         self,
         name: str,
-        namespace: str,
+        namespace: Optional[str] = None,
         data: Optional[dict[str, str]] = None,
         binary_data: Optional[dict[str, str]] = None,
         labels: Optional[dict[str, str]] = None,
         annotations: Optional[dict[str, str]] = None,
     ) -> None:
         """Add a ConfigMap resource"""
+        ns = self._get_namespace(namespace)
         manifest = {
             "apiVersion": "v1",
             "kind": "ConfigMap",
-            "metadata": {"name": name, "namespace": namespace},
+            "metadata": {"name": name, "namespace": ns},
         }
         if labels:
             manifest["metadata"]["labels"] = labels
@@ -107,7 +135,7 @@ class KubernetesResource(Template):
     def add_secret(
         self,
         name: str,
-        namespace: str,
+        namespace: Optional[str] = None,
         data: Optional[dict[str, str]] = None,
         string_data: Optional[dict[str, str]] = None,
         secret_type: str = "Opaque",
@@ -115,10 +143,11 @@ class KubernetesResource(Template):
         annotations: Optional[dict[str, str]] = None,
     ) -> None:
         """Add a Secret resource"""
+        ns = self._get_namespace(namespace)
         manifest = {
             "apiVersion": "v1",
             "kind": "Secret",
-            "metadata": {"name": name, "namespace": namespace},
+            "metadata": {"name": name, "namespace": ns},
             "type": secret_type,
         }
         if labels:
@@ -134,19 +163,20 @@ class KubernetesResource(Template):
     def add_persistent_volume_claim(
         self,
         name: str,
-        namespace: str,
         access_modes: list[str],
         storage: str,
+        namespace: Optional[str] = None,
         storage_class_name: Optional[str] = None,
         volume_mode: str = "Filesystem",
         labels: Optional[dict[str, str]] = None,
         annotations: Optional[dict[str, str]] = None,
     ) -> None:
         """Add a PersistentVolumeClaim resource"""
+        ns = self._get_namespace(namespace)
         manifest = {
             "apiVersion": "v1",
             "kind": "PersistentVolumeClaim",
-            "metadata": {"name": name, "namespace": namespace},
+            "metadata": {"name": name, "namespace": ns},
             "spec": {
                 "accessModes": access_modes,
                 "resources": {"requests": {"storage": storage}},
@@ -164,9 +194,9 @@ class KubernetesResource(Template):
     def add_deployment(
         self,
         name: str,
-        namespace: str,
-        replicas: int,
         containers: list[dict[str, Any]],
+        namespace: Optional[str] = None,
+        replicas: int = 1,
         labels: Optional[dict[str, str]] = None,
         annotations: Optional[dict[str, str]] = None,
         selector: Optional[dict[str, str]] = None,
@@ -177,6 +207,7 @@ class KubernetesResource(Template):
         security_context: Optional[dict[str, Any]] = None,
     ) -> None:
         """Add a Deployment resource"""
+        ns = self._get_namespace(namespace)
         # Use labels as selector if not provided
         pod_labels = labels or {}
         pod_selector = selector or pod_labels
@@ -184,7 +215,7 @@ class KubernetesResource(Template):
         manifest = {
             "apiVersion": "apps/v1",
             "kind": "Deployment",
-            "metadata": {"name": name, "namespace": namespace},
+            "metadata": {"name": name, "namespace": ns},
             "spec": {
                 "replicas": replicas,
                 "selector": {"matchLabels": pod_selector},
@@ -215,9 +246,9 @@ class KubernetesResource(Template):
     def add_service(
         self,
         name: str,
-        namespace: str,
         selector: dict[str, str],
         ports: list[dict[str, Any]],
+        namespace: Optional[str] = None,
         service_type: str = "ClusterIP",
         labels: Optional[dict[str, str]] = None,
         annotations: Optional[dict[str, str]] = None,
@@ -225,10 +256,11 @@ class KubernetesResource(Template):
         external_traffic_policy: Optional[str] = None,
     ) -> None:
         """Add a Service resource"""
+        ns = self._get_namespace(namespace)
         manifest = {
             "apiVersion": "v1",
             "kind": "Service",
-            "metadata": {"name": name, "namespace": namespace},
+            "metadata": {"name": name, "namespace": ns},
             "spec": {
                 "type": service_type,
                 "selector": selector,
@@ -248,10 +280,10 @@ class KubernetesResource(Template):
     def add_statefulset(
         self,
         name: str,
-        namespace: str,
-        replicas: int,
         service_name: str,
         containers: list[dict[str, Any]],
+        namespace: Optional[str] = None,
+        replicas: int = 1,
         volume_claim_templates: Optional[list[dict[str, Any]]] = None,
         labels: Optional[dict[str, str]] = None,
         annotations: Optional[dict[str, str]] = None,
@@ -262,13 +294,14 @@ class KubernetesResource(Template):
         security_context: Optional[dict[str, Any]] = None,
     ) -> None:
         """Add a StatefulSet resource"""
+        ns = self._get_namespace(namespace)
         pod_labels = labels or {}
         pod_selector = selector or pod_labels
 
         manifest = {
             "apiVersion": "apps/v1",
             "kind": "StatefulSet",
-            "metadata": {"name": name, "namespace": namespace},
+            "metadata": {"name": name, "namespace": ns},
             "spec": {
                 "serviceName": service_name,
                 "replicas": replicas,
@@ -300,18 +333,19 @@ class KubernetesResource(Template):
     def add_ingress(
         self,
         name: str,
-        namespace: str,
         rules: list[dict[str, Any]],
+        namespace: Optional[str] = None,
         ingress_class_name: Optional[str] = None,
         tls: Optional[list[dict[str, Any]]] = None,
         labels: Optional[dict[str, str]] = None,
         annotations: Optional[dict[str, str]] = None,
     ) -> None:
         """Add an Ingress resource"""
+        ns = self._get_namespace(namespace)
         manifest = {
             "apiVersion": "networking.k8s.io/v1",
             "kind": "Ingress",
-            "metadata": {"name": name, "namespace": namespace},
+            "metadata": {"name": name, "namespace": ns},
             "spec": {"rules": rules},
         }
         if labels:
@@ -327,15 +361,16 @@ class KubernetesResource(Template):
     def add_service_account(
         self,
         name: str,
-        namespace: str,
+        namespace: Optional[str] = None,
         labels: Optional[dict[str, str]] = None,
         annotations: Optional[dict[str, str]] = None,
     ) -> None:
         """Add a ServiceAccount resource"""
+        ns = self._get_namespace(namespace)
         manifest = {
             "apiVersion": "v1",
             "kind": "ServiceAccount",
-            "metadata": {"name": name, "namespace": namespace},
+            "metadata": {"name": name, "namespace": ns},
         }
         if labels:
             manifest["metadata"]["labels"] = labels
@@ -346,16 +381,17 @@ class KubernetesResource(Template):
     def add_role(
         self,
         name: str,
-        namespace: str,
         rules: list[dict[str, Any]],
+        namespace: Optional[str] = None,
         labels: Optional[dict[str, str]] = None,
         annotations: Optional[dict[str, str]] = None,
     ) -> None:
         """Add a Role resource"""
+        ns = self._get_namespace(namespace)
         manifest = {
             "apiVersion": "rbac.authorization.k8s.io/v1",
             "kind": "Role",
-            "metadata": {"name": name, "namespace": namespace},
+            "metadata": {"name": name, "namespace": ns},
             "rules": rules,
         }
         if labels:
@@ -367,18 +403,19 @@ class KubernetesResource(Template):
     def add_role_binding(
         self,
         name: str,
-        namespace: str,
         role_name: str,
         subjects: list[dict[str, Any]],
+        namespace: Optional[str] = None,
         role_kind: str = "Role",
         labels: Optional[dict[str, str]] = None,
         annotations: Optional[dict[str, str]] = None,
     ) -> None:
         """Add a RoleBinding resource"""
+        ns = self._get_namespace(namespace)
         manifest = {
             "apiVersion": "rbac.authorization.k8s.io/v1",
             "kind": "RoleBinding",
-            "metadata": {"name": name, "namespace": namespace},
+            "metadata": {"name": name, "namespace": ns},
             "roleRef": {
                 "apiGroup": "rbac.authorization.k8s.io",
                 "kind": role_kind,

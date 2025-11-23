@@ -21,14 +21,12 @@ class StockPriceProducer(KubernetesResource):
 
         # Add Namespace
         self.add_namespace(
-            name="kafka",
             labels={"app": "kafka", "component": "stock-price-processing"},
         )
 
         # Add ConfigMap for producer configuration
         self.add_configmap(
             name="stock-price-producer-config",
-            namespace="kafka",
             data={
                 "STOCK_SYMBOLS": "AAPL,GOOGL,MSFT,TSLA",
                 "KAFKA_BROKER": "my-cluster-kafka-bootstrap.kafka.svc.cluster.local:9092",
@@ -41,9 +39,6 @@ class StockPriceProducer(KubernetesResource):
         # Add Deployment
         self.add_deployment(
             name="stock-price-producer",
-            namespace="kafka",
-            replicas=1,
-            labels={"app": "stock-price-producer", "component": "producer"},
             containers=[
                 {
                     "name": "producer",
@@ -93,6 +88,8 @@ class StockPriceProducer(KubernetesResource):
                     },
                 }
             ],
+            replicas=1,
+            labels={"app": "stock-price-producer", "component": "producer"},
         )
 
     def enable_argocd(self) -> bool:
