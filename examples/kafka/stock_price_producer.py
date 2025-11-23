@@ -2,7 +2,7 @@
 Stock Price Producer Kubernetes Resource.
 
 This module defines a Kubernetes deployment for a stock price producer service
-that fetches live stock prices from Yahoo Finance and publishes them to Kafka.
+that generates mock stock prices and publishes them to Kafka.
 """
 
 from kubeman import KubernetesResource, TemplateRegistry
@@ -31,7 +31,7 @@ class StockPriceProducer(KubernetesResource):
             namespace="kafka",
             data={
                 "STOCK_SYMBOLS": "AAPL,GOOGL,MSFT,TSLA",
-                "KAFKA_BROKER": "kafka.kafka.svc.cluster.local:9092",
+                "KAFKA_BROKER": "my-cluster-kafka-bootstrap.kafka.svc.cluster.local:9092",
                 "KAFKA_TOPIC": "stock-prices",
                 "FETCH_INTERVAL": "5",
             },

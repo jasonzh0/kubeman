@@ -2,23 +2,34 @@
 """
 Stock Price Producer Application.
 
-Fetches live stock prices from Yahoo Finance and publishes them to Kafka.
+Generates mock stock prices and publishes them to Kafka.
 """
 
 import json
 import os
+import random
 import time
 from datetime import datetime
-from typing import List
+from typing import Dict
 
-import yfinance as yf
 from kafka import KafkaProducer
 from kafka.errors import KafkaError
+
+# Base prices for each symbol (starting prices)
+BASE_PRICES: Dict[str, float] = {
+    "AAPL": 175.00,
+    "GOOGL": 140.00,
+    "MSFT": 380.00,
+    "TSLA": 250.00,
+}
+
+# Track current prices for each symbol
+current_prices: Dict[str, float] = {}
 
 
 def get_stock_price(symbol: str) -> dict:
     """
-    Fetch current stock price for a given symbol.
+    Generate a mock stock price for a given symbol with realistic variation.
 
     Args:
         symbol: Stock ticker symbol (e.g., 'AAPL')
@@ -26,31 +37,22 @@ def get_stock_price(symbol: str) -> dict:
     Returns:
         Dictionary with symbol, price, and timestamp
     """
-    try:
-        ticker = yf.Ticker(symbol)
-        info = ticker.history(period="1d", interval="1m")
-        if not info.empty:
-            # Get the latest price
-            latest = info.iloc[-1]
-            price = float(latest["Close"])
-        else:
-            # Fallback to current info if history is not available
-            info_dict = ticker.info
-            price = float(info_dict.get("currentPrice", 0.0))
+    # Initialize base price if not set
+    if symbol not in current_prices:
+        current_prices[symbol] = BASE_PRICES.get(symbol, 100.0)
 
-        return {
-            "symbol": symbol,
-            "price": round(price, 2),
-            "timestamp": datetime.utcnow().isoformat() + "Z",
-        }
-    except Exception as e:
-        print(f"Error fetching price for {symbol}: {e}")
-        return {
-            "symbol": symbol,
-            "price": 0.0,
-            "timestamp": datetime.utcnow().isoformat() + "Z",
-            "error": str(e),
-        }
+    # Generate price variation (-2% to +2% per update)
+    variation = random.uniform(-0.02, 0.02)
+    current_prices[symbol] = current_prices[symbol] * (1 + variation)
+
+    # Ensure price doesn't go below $1
+    current_prices[symbol] = max(current_prices[symbol], 1.0)
+
+    return {
+        "symbol": symbol,
+        "price": round(current_prices[symbol], 2),
+        "timestamp": datetime.utcnow().isoformat() + "Z",
+    }
 
 
 def main():

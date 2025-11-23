@@ -24,7 +24,7 @@ class StockPriceConsumer(KubernetesResource):
             name="stock-price-consumer-config",
             namespace="kafka",
             data={
-                "KAFKA_BROKER": "kafka.kafka.svc.cluster.local:9092",
+                "KAFKA_BROKER": "my-cluster-kafka-bootstrap.kafka.svc.cluster.local:9092",
                 "KAFKA_TOPIC": "stock-prices",
                 "CONSUMER_GROUP": "stock-price-processors",
             },
