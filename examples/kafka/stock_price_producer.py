@@ -106,6 +106,19 @@ class StockPriceProducer(KubernetesResource):
             tag="latest",
             dockerfile="Dockerfile.producer",
         )
+        # Tag with local name for kind cluster
+        docker.tag_image(
+            source_image=f"{docker.registry}/stock-price-producer",
+            target_image="stock-price-producer",
+            source_tag="latest",
+        )
+
+    def load(self) -> None:
+        """Load Docker image into kind cluster"""
+        from kubeman import DockerManager
+
+        docker = DockerManager()
+        docker.kind_load_image("stock-price-producer", tag="latest")
 
     def enable_argocd(self) -> bool:
         """Enable ArgoCD Application generation (optional)"""

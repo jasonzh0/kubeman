@@ -129,6 +129,28 @@ class Template(ABC):
         """
         pass
 
+    def load(self) -> None:
+        """
+        Load Docker images into the Kubernetes cluster for this template.
+
+        Override this method to define image loading steps that should execute
+        when the template is registered. Load steps run sequentially after build
+        steps, in registration order.
+
+        This is particularly useful for local development with kind clusters,
+        where images need to be loaded into the cluster after building.
+
+        By default, this method does nothing. Subclasses can override it
+        to implement load steps.
+
+        Example:
+            def load(self) -> None:
+                from kubeman import DockerManager
+                docker = DockerManager()
+                docker.kind_load_image("my-component", tag="latest", cluster_name="my-cluster")
+        """
+        pass
+
     @abstractmethod
     def render(self) -> None:
         """

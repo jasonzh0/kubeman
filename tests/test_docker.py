@@ -69,7 +69,7 @@ class TestDockerManager:
         image_name = manager.build_image("component", "/path/to/context", "v1.0.0")
 
         assert image_name == f"{manager.registry}/component:v1.0.0"
-        assert mock_executor.run.call_count == 2  # auth + build
+        assert mock_executor.run.call_count == 1  # build
 
     def test_build_image_default_tag(self, monkeypatch):
         """Test building image with default 'latest' tag."""
@@ -83,7 +83,7 @@ class TestDockerManager:
         image_name = manager.build_image("component", "/path/to/context")
 
         assert image_name.endswith(":latest")
-        assert mock_executor.run.call_count == 2
+        assert mock_executor.run.call_count == 1
 
     def test_build_image_custom_dockerfile(self, monkeypatch):
         """Test building image with custom Dockerfile name."""
@@ -99,10 +99,10 @@ class TestDockerManager:
         )
 
         assert image_name == f"{manager.registry}/component:v1.0.0"
-        assert mock_executor.run.call_count == 2  # auth + build
+        assert mock_executor.run.call_count == 1  # build
 
         # Check that the dockerfile parameter was used
-        build_call = mock_executor.run.call_args_list[1]
+        build_call = mock_executor.run.call_args_list[0]
         cmd = build_call[0][0]
         assert "-f" in cmd
         dockerfile_index = cmd.index("-f")
@@ -114,18 +114,13 @@ class TestDockerManager:
         manager = DockerManager()
 
         mock_executor = MagicMock()
-        # Mock auth check (success)
-        mock_executor.run.side_effect = [
-            Mock(returncode=0, stdout="token"),  # print-access-token
-            Mock(returncode=0),  # configure-docker
-            Mock(returncode=0),  # push
-        ]
+        mock_executor.run.return_value = Mock(returncode=0)
         manager.executor = mock_executor
 
         image_name = manager.push_image("component", "v1.0.0")
 
         assert image_name == f"{manager.registry}/component:v1.0.0"
-        assert mock_executor.run.call_count == 3  # auth check + configure + push
+        assert mock_executor.run.call_count == 1  # push
 
     def test_push_image_default_tag(self, monkeypatch):
         """Test pushing image with default 'latest' tag."""
@@ -133,11 +128,7 @@ class TestDockerManager:
         manager = DockerManager()
 
         mock_executor = MagicMock()
-        mock_executor.run.side_effect = [
-            Mock(returncode=0, stdout="token"),  # print-access-token
-            Mock(returncode=0),  # configure-docker
-            Mock(returncode=0),  # push
-        ]
+        mock_executor.run.return_value = Mock(returncode=0)
         manager.executor = mock_executor
 
         image_name = manager.push_image("component")
@@ -145,23 +136,21 @@ class TestDockerManager:
         assert image_name.endswith(":latest")
 
     def test_push_image_not_authenticated(self, monkeypatch):
-        """Test pushing image when not authenticated raises error."""
+        """Test pushing image when push fails raises error."""
         monkeypatch.setenv("DOCKER_PROJECT_ID", "test-project")
         manager = DockerManager()
 
         mock_executor = MagicMock()
-        # Mock auth check (failure)
-        # First call is _ensure_gcloud_auth (configure-docker)
-        # Second call is _ensure_gcloud_login (print-access-token) which fails
-        mock_executor.run.side_effect = [
-            Mock(returncode=0),  # configure-docker succeeds
-            Exception("Not authenticated"),  # print-access-token fails
-        ]
+        # Mock push failure
+        import subprocess
+
+        mock_executor.run.side_effect = subprocess.CalledProcessError(
+            1, ["docker", "push", "test"], stderr="denied: access denied"
+        )
         manager.executor = mock_executor
 
-        with patch("builtins.print"):
-            with pytest.raises(ValueError, match="Cloud provider authentication required"):
-                manager.push_image("component")
+        with pytest.raises(subprocess.CalledProcessError):
+            manager.push_image("component")
 
     def test_build_and_push(self, monkeypatch):
         """Test building and pushing an image."""
@@ -169,19 +158,13 @@ class TestDockerManager:
         manager = DockerManager()
 
         mock_executor = MagicMock()
-        mock_executor.run.side_effect = [
-            Mock(returncode=0),  # configure-docker (build)
-            Mock(returncode=0),  # build
-            Mock(returncode=0, stdout="token"),  # print-access-token
-            Mock(returncode=0),  # configure-docker (push)
-            Mock(returncode=0),  # push
-        ]
+        mock_executor.run.return_value = Mock(returncode=0)
         manager.executor = mock_executor
 
         image_name = manager.build_and_push("component", "/path/to/context", "v1.0.0")
 
         assert image_name == f"{manager.registry}/component:v1.0.0"
-        assert mock_executor.run.call_count == 5
+        assert mock_executor.run.call_count == 2  # build + push
 
     def test_build_and_push_custom_dockerfile(self, monkeypatch):
         """Test building and pushing with custom Dockerfile."""
@@ -189,13 +172,7 @@ class TestDockerManager:
         manager = DockerManager()
 
         mock_executor = MagicMock()
-        mock_executor.run.side_effect = [
-            Mock(returncode=0),  # configure-docker (build)
-            Mock(returncode=0),  # build
-            Mock(returncode=0, stdout="token"),  # print-access-token
-            Mock(returncode=0),  # configure-docker (push)
-            Mock(returncode=0),  # push
-        ]
+        mock_executor.run.return_value = Mock(returncode=0)
         manager.executor = mock_executor
 
         image_name = manager.build_and_push(
@@ -203,56 +180,11 @@ class TestDockerManager:
         )
 
         assert image_name == f"{manager.registry}/component:v1.0.0"
-        assert mock_executor.run.call_count == 5
+        assert mock_executor.run.call_count == 2  # build + push
 
         # Check that the dockerfile parameter was used in build
-        build_call = mock_executor.run.call_args_list[1]
+        build_call = mock_executor.run.call_args_list[0]
         cmd = build_call[0][0]
         assert "-f" in cmd
         dockerfile_index = cmd.index("-f")
         assert cmd[dockerfile_index + 1] == "/path/to/context/Dockerfile.custom"
-
-    def test_ensure_gcloud_auth(self, monkeypatch):
-        """Test container registry authentication configuration."""
-        monkeypatch.setenv("DOCKER_PROJECT_ID", "test-project")
-        manager = DockerManager()
-
-        mock_executor = MagicMock()
-        mock_executor.run.return_value = Mock(returncode=0)
-        manager.executor = mock_executor
-
-        manager._ensure_gcloud_auth()
-
-        mock_executor.run.assert_called_once()
-        call_args = mock_executor.run.call_args[0][0]
-        assert "gcloud" in call_args
-        assert "auth" in call_args
-        assert "configure-docker" in call_args
-        # Registry should be in the command arguments
-        call_args_str = " ".join(call_args)
-        assert manager.registry in call_args_str
-
-    def test_ensure_gcloud_login_success(self, monkeypatch):
-        """Test cloud provider login check when authenticated."""
-        monkeypatch.setenv("DOCKER_PROJECT_ID", "test-project")
-        manager = DockerManager()
-
-        mock_executor = MagicMock()
-        mock_executor.run.return_value = Mock(returncode=0, stdout="token")
-        manager.executor = mock_executor
-
-        # Should not raise
-        manager._ensure_gcloud_login()
-
-    def test_ensure_gcloud_login_failure(self, monkeypatch):
-        """Test cloud provider login check when not authenticated."""
-        monkeypatch.setenv("DOCKER_PROJECT_ID", "test-project")
-        manager = DockerManager()
-
-        mock_executor = MagicMock()
-        mock_executor.run.side_effect = Exception("Not authenticated")
-        manager.executor = mock_executor
-
-        with patch("builtins.print"):
-            with pytest.raises(ValueError, match="Cloud provider authentication required"):
-                manager._ensure_gcloud_login()

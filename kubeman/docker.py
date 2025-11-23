@@ -59,9 +59,6 @@ class DockerManager:
         tag = tag or "latest"
         image_name = f"{self.registry}/{component}:{tag}"
 
-        # Ensure authentication is configured before building
-        self._ensure_gcloud_auth()
-
         context = Path(context_path)
         dockerfile_path = context / (dockerfile or "Dockerfile")
 
@@ -91,12 +88,6 @@ class DockerManager:
         tag = tag or "latest"
         image_name = f"{self.registry}/{component}:{tag}"
 
-        # Ensure authentication is configured before pushing
-        self._ensure_gcloud_auth()
-
-        # First check if we're logged into GCP
-        self._ensure_gcloud_login()
-
         cmd = ["docker", "push", image_name]
         self.executor.run(cmd, check=True)
         return image_name
@@ -120,23 +111,101 @@ class DockerManager:
         self.push_image(component, tag)
         return image_name
 
-    def _ensure_gcloud_auth(self):
-        """Ensure Docker is authenticated with the container registry."""
-        cmd = ["gcloud", "auth", "configure-docker", self.registry, "--quiet"]
+    def tag_image(
+        self,
+        source_image: str,
+        target_image: str,
+        source_tag: Optional[str] = None,
+        target_tag: Optional[str] = None,
+    ) -> None:
+        """
+        Tag a Docker image with a new name and/or tag.
+
+        Useful for creating local tags from registry images, especially for
+        loading into kind clusters.
+
+        Args:
+            source_image: Source image name (can include registry path, with or without tag)
+            target_image: Target image name (local name, without tag)
+            source_tag: Optional source tag (defaults to 'latest' if not in source_image)
+            target_tag: Optional target tag (defaults to source_tag or 'latest')
+        """
+        # Parse source image - check if it already has a tag
+        if ":" in source_image:
+            source_parts = source_image.rsplit(":", 1)
+            source_name = source_parts[0]
+            source_tag_from_name = source_parts[1]
+            source_tag = source_tag or source_tag_from_name
+        else:
+            source_name = source_image
+            source_tag = source_tag or "latest"
+
+        # Use target_tag if provided, otherwise use source_tag
+        target_tag = target_tag or source_tag
+
+        source = f"{source_name}:{source_tag}"
+        target = f"{target_image}:{target_tag}"
+
+        cmd = ["docker", "tag", source, target]
         self.executor.run(cmd, check=True)
 
-    def _ensure_gcloud_login(self):
-        """Ensure we're logged into the cloud provider."""
-        # Check if we're already authenticated
+    def kind_load_image(
+        self,
+        image_name: str,
+        cluster_name: Optional[str] = None,
+        tag: Optional[str] = None,
+    ) -> None:
+        """
+        Load a Docker image into a kind cluster.
+
+        This is useful for local development where images need to be loaded
+        into a kind cluster after building.
+
+        Args:
+            image_name: Name of the Docker image to load (without tag, e.g., "my-app")
+            cluster_name: Optional kind cluster name. If not provided, attempts to
+                         detect from kubectl context (kind-{cluster-name} format)
+            tag: Optional tag (defaults to 'latest')
+
+        Raises:
+            RuntimeError: If kind is not available or cluster is not found
+            ValueError: If cluster name cannot be determined automatically
+        """
+        tag = tag or "latest"
+        full_image_name = f"{image_name}:{tag}" if ":" not in image_name else image_name
+        # Check if kind is available
         try:
-            self.executor.run(
-                ["gcloud", "auth", "print-access-token"],
-                check=True,
-                capture_output=True,
-                text=True,
-            )
+            self.executor.run(["kind", "version"], check=True, capture_output=True)
         except Exception:
-            # If not authenticated, print helpful message and exit
-            print("Error: Not authenticated with cloud provider.")
-            print("Please run: gcloud auth login")
-            raise ValueError("Cloud provider authentication required")
+            raise RuntimeError(
+                "kind is not installed or not in PATH. Please install kind to use load_image."
+            )
+
+        # Try to detect cluster name from kubectl context if not provided
+        if cluster_name is None:
+            try:
+                result = self.executor.run(
+                    ["kubectl", "config", "current-context"],
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                )
+                context = result.stdout.strip()
+                # Extract cluster name from context (kind-{cluster-name})
+                if context.startswith("kind-"):
+                    cluster_name = context.replace("kind-", "", 1)
+                else:
+                    raise ValueError(
+                        f"Current kubectl context '{context}' does not appear to be a kind cluster. "
+                        "Please specify cluster_name parameter."
+                    )
+            except Exception as e:
+                if isinstance(e, ValueError):
+                    raise
+                raise ValueError(
+                    f"Could not determine kind cluster name: {e}. Please specify cluster_name parameter."
+                ) from e
+
+        # Load the image into the kind cluster
+        cmd = ["kind", "load", "docker-image", full_image_name, "--name", cluster_name]
+        self.executor.run(cmd, check=True)

@@ -9,8 +9,9 @@ A Python library for rendering Helm charts and Kubernetes resources with optiona
 - `KubernetesResource` class for raw Kubernetes resources (no Helm required)
 - `TemplateRegistry` for managing multiple templates (charts and resources)
 - Command-line interface (CLI) for rendering and applying manifests
+- Automatic Docker image build and load steps (executed sequentially during template registration)
 - Git operations for manifest repository management
-- Docker image build and push utilities
+- Docker image build and push utilities with custom Dockerfile support
 - Optional ArgoCD Application manifest generation (opt-in)
 
 ## Installation
@@ -83,6 +84,7 @@ Both `HelmChart` and `KubernetesResource` inherit from the abstract `Template` b
 - Manifest directory management
 - Namespace and name properties
 - Rendering to filesystem
+- Optional Docker image build steps (executed sequentially during template registration)
 
 This shared base class ensures consistent behavior across all template types while allowing each subclass to implement its specific rendering logic.
 
@@ -305,6 +307,63 @@ class MyAppResources(KubernetesResource):
 
 The `KubernetesResource` class provides a simpler interface than `HelmChart` when you don't need Helm's templating capabilities. It supports optional ArgoCD Application generation and integrates with the `TemplateRegistry` system.
 
+### Build and Load Steps
+
+Templates can define Docker image build and load steps that execute automatically when templates are imported. Steps run sequentially in registration order: build steps first, then load steps, ensuring dependencies are built and loaded before they're needed.
+
+#### Build Steps
+
+To add build steps to a template, override the `build()` method:
+
+```python
+from kubeman import KubernetesResource, TemplateRegistry, DockerManager
+
+@TemplateRegistry.register
+class MyApp(KubernetesResource):
+    def __init__(self):
+        super().__init__()
+        self.name = "my-app"
+        self.namespace = "production"
+
+    def build(self) -> None:
+        """Build Docker images for this template."""
+        docker = DockerManager()
+        docker.build_image(
+            component="my-app",
+            context_path="./app",
+            tag="latest",
+            dockerfile="Dockerfile.prod"  # Optional: custom Dockerfile name
+        )
+        # Tag with local name for kind clusters
+        docker.tag_image(
+            source_image=f"{docker.registry}/my-app",
+            target_image="my-app",
+            source_tag="latest"
+        )
+
+    def render(self) -> None:
+        # Render manifests...
+        pass
+```
+
+#### Load Steps
+
+For local development with kind clusters, you can also add load steps to load images into the cluster:
+
+```python
+def load(self) -> None:
+    """Load Docker images into kind cluster."""
+    docker = DockerManager()
+    docker.kind_load_image("my-app", tag="latest")
+```
+
+**Key points:**
+- Build steps execute automatically when `templates.py` is imported
+- Load steps execute after build steps, in registration order
+- Builds and loads run sequentially in the order templates are registered
+- Use `--skip-build` flag to skip build steps during render/apply
+- If a build or load fails, template registration fails with a clear error message
+
 ### Rendering Charts and Resources
 
 Once your charts and resources are registered, you can render them using either the CLI or Python API.
@@ -317,11 +376,17 @@ The easiest way to render and apply your templates is using the `kubeman` CLI co
 # Render all templates from a Python file
 kubeman render --file templates.py
 
-# Render and apply to Kubernetes cluster
+# Render without executing build steps
+kubeman render --file templates.py --skip-build
+
+# Render and apply to Kubernetes cluster (builds execute automatically)
 kubeman apply --file templates.py
 
 # Apply with a specific namespace
 kubeman apply --file templates.py --namespace my-namespace
+
+# Apply without executing build steps
+kubeman apply --file templates.py --skip-build
 ```
 
 The CLI will:
@@ -512,6 +577,29 @@ image_name = docker.build_image(
     tag="v1.0.0"
 )
 
+# Build with custom Dockerfile name
+image_name = docker.build_image(
+    component="frontend",
+    context_path="./frontend",
+    tag="v1.0.0",
+    dockerfile="Dockerfile.prod"  # Optional: defaults to "Dockerfile"
+)
+
+# Tag an image (useful for creating local tags from registry images)
+docker.tag_image(
+    source_image=f"{docker.registry}/frontend",
+    target_image="frontend",
+    source_tag="v1.0.0",
+    target_tag="latest"  # Optional: defaults to source_tag
+)
+
+# Load image into kind cluster (for local development)
+docker.kind_load_image(
+    image_name="frontend",
+    tag="latest",
+    cluster_name="my-cluster"  # Optional: auto-detected from kubectl context
+)
+
 # Push an image
 docker.push_image(component="frontend", tag="v1.0.0")
 
@@ -519,7 +607,8 @@ docker.push_image(component="frontend", tag="v1.0.0")
 image_name = docker.build_and_push(
     component="backend",
     context_path="./backend",
-    tag="latest"
+    tag="latest",
+    dockerfile="Dockerfile"  # Optional: custom Dockerfile name
 )
 ```
 
@@ -632,13 +721,14 @@ class MyAppResources(KubernetesResource):
             }
         ]
 
-# Build and push Docker images
-docker = DockerManager()
-docker.build_and_push("my-app", "./app", tag="v1.0.0")
-
 # Option 1: Use CLI to render and apply
+# Build steps execute automatically when templates are imported
 # kubeman render --file templates.py
 # kubeman apply --file templates.py
+
+# Option 2: Skip build steps if images are already built
+# kubeman render --file templates.py --skip-build
+# kubeman apply --file templates.py --skip-build
 
 # Option 2: Render programmatically
 for template_class in TemplateRegistry.get_registered_templates():

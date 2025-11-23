@@ -21,25 +21,35 @@ The example includes:
 
 ## Usage
 
-### 1. Build Docker Images (for Stock Price Processing)
+### 1. Render and Apply Manifests
 
-If you want to use the stock price processing features, first build the Docker images:
+The Kafka example includes automatic Docker image build steps for the stock price producer and consumer. When you run `kubeman render` or `kubeman apply`, the following happens automatically:
+
+1. **Build steps**: The `StockPriceProducer` and `StockPriceConsumer` templates build their Docker images
+2. **Render step**: All templates are rendered to manifests
+3. **Apply step**: Manifests are applied to the cluster (if using `kubeman apply`)
 
 ```bash
+# From the examples/kafka directory:
 cd examples/kafka
+kubeman apply
 
-# Build producer image
-docker build -f Dockerfile.producer -t stock-price-producer:latest .
+# Or with explicit path from project root:
+kubeman apply --file examples/kafka/templates.py
 
-# Build consumer image
-docker build -f Dockerfile.consumer -t stock-price-consumer:latest .
+# For kind clusters, set Docker environment variables:
+DOCKER_PROJECT_ID=test-project DOCKER_REGION=us-central1 DOCKER_REPOSITORY_NAME=default \
+  kubeman apply --file examples/kafka/templates.py
+
+# Skip build steps if images are already built:
+kubeman apply --file examples/kafka/templates.py --skip-build
 ```
 
-**Note**: In a production environment, you would push these images to a container registry and update the image references in the Kubernetes resources.
+**Note**: The `templates.py` file imports all template modules (`kafka_example.py`, `stock_price_producer.py`, `stock_price_consumer.py`) which automatically register themselves via the `@TemplateRegistry.register` decorator. Build steps execute automatically during registration, before rendering.
 
-### 2. Render Manifests
+### 2. Render Only (Without Applying)
 
-Render the Kubernetes manifests without applying them:
+To render manifests without applying them:
 
 ```bash
 # From the examples/kafka directory:
@@ -53,30 +63,9 @@ kubeman render --file examples/kafka/templates.py
 kubeman render --file examples/kafka/templates.py --output-dir ./custom-manifests
 ```
 
-This will generate manifests in the `manifests/` directory (or the specified output directory).
-
-### 3. Apply to Kubernetes
-
-Render and apply the manifests to your cluster:
-
-```bash
-# From the examples/kafka directory:
-cd examples/kafka
-kubeman apply
-
-# Or with explicit path from project root:
-kubeman apply --file examples/kafka/templates.py
-
-# Optionally specify custom output directory:
-kubeman apply --file examples/kafka/templates.py --output-dir ./custom-manifests
-```
-
 This will:
-1. Render the Strimzi operator Helm chart and Kafka CRD manifests
-2. Apply all manifests to the `kafka` namespace
-3. Create the namespace if it doesn't exist
-
-**Note**: The `templates.py` file imports all template modules (`kafka_example.py`, `stock_price_producer.py`, `stock_price_consumer.py`) which automatically register themselves via the `@TemplateRegistry.register` decorator. This allows all templates to be rendered and applied in a single command.
+1. Build the Docker images for producer and consumer (if not skipped)
+2. Render all templates to the `manifests/` directory
 
 ### 4. Verify Deployment
 

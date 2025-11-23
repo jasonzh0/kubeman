@@ -15,13 +15,42 @@ The example includes:
 1. **kubectl** configured to access your Kubernetes cluster
 2. **Helm** installed (version 3.x)
 3. **kubeman** installed (see main README for installation instructions)
-4. **Kubernetes cluster** (version 1.16 or higher)
+4. **Docker** installed (for building custom PySpark job images)
+5. **Kubernetes cluster** (version 1.16 or higher)
+6. **kind** installed (optional, for local development with kind clusters)
 
 ## Usage
 
-### 1. Render Manifests
+### 1. Render and Apply Manifests
 
-Render the Kubernetes manifests without applying them:
+The Spark example includes automatic Docker image build and load steps. When you run `kubeman render` or `kubeman apply`, the following happens automatically:
+
+1. **Build step**: The `CustomPySparkJob` template builds the Docker image using `Dockerfile.pyspark`
+2. **Load step**: The image is loaded into your kind cluster (if using kind)
+3. **Render step**: All templates are rendered to manifests
+4. **Apply step**: Manifests are applied to the cluster (if using `kubeman apply`)
+
+```bash
+# From the examples/spark directory:
+cd examples/spark
+kubeman apply
+
+# Or with explicit path from project root:
+kubeman apply --file examples/spark/templates.py
+
+# For kind clusters, set Docker environment variables:
+DOCKER_PROJECT_ID=test-project DOCKER_REGION=us-central1 DOCKER_REPOSITORY_NAME=default \
+  kubeman apply --file examples/spark/templates.py
+
+# Skip build/load steps if images are already built:
+kubeman apply --file examples/spark/templates.py --skip-build
+```
+
+**Note**: The `templates.py` file imports all template modules (`spark_operator.py`, `spark_application.py`, `custom_pyspark_job.py`) which automatically register themselves via the `@TemplateRegistry.register` decorator. Build and load steps execute automatically during registration, before rendering.
+
+### 2. Render Only (Without Applying)
+
+To render manifests without applying them:
 
 ```bash
 # From the examples/spark directory:
@@ -35,39 +64,17 @@ kubeman render --file examples/spark/templates.py
 kubeman render --file examples/spark/templates.py --output-dir ./custom-manifests
 ```
 
-This will generate manifests in the `manifests/` directory (or the specified output directory).
-
-### 2. Apply to Kubernetes
-
-Render and apply the manifests to your cluster:
-
-```bash
-# From the examples/spark directory:
-cd examples/spark
-kubeman apply
-
-# Or with explicit path from project root:
-kubeman apply --file examples/spark/templates.py
-
-# Optionally specify custom output directory:
-kubeman apply --file examples/spark/templates.py --output-dir ./custom-manifests
-```
-
 This will:
-1. Render the Helm chart templates for the Spark Operator
-2. Apply all manifests to the `spark` namespace
-3. Create the namespace if it doesn't exist
-4. Install the Spark Operator
-5. Create the SparkPi application
-
-**Note**: The `templates.py` file imports all template modules (`spark_operator.py`, `spark_application.py`) which automatically register themselves via the `@TemplateRegistry.register` decorator. This allows all templates to be rendered and applied in a single command.
+1. Build the Docker image for `CustomPySparkJob` (if not skipped)
+2. Load the image into kind cluster (if not skipped)
+3. Render all templates to the `manifests/` directory
 
 ### 3. Verify Deployment
 
 Check the status of the Spark deployment:
 
 ```bash
-# Check pods (Spark Operator, SparkPi driver and executors)
+# Check pods (Spark Operator, SparkPi driver, CustomPySparkJob driver and executors)
 kubectl get pods -n spark
 
 # Check services
@@ -78,12 +85,58 @@ kubectl get sparkapplication -n spark
 
 # Check SparkApplication details
 kubectl describe sparkapplication spark-pi -n spark
+kubectl describe sparkapplication custom-pyspark-job -n spark
 
 # Check Spark Operator logs
 kubectl logs -n spark -l app.kubernetes.io/name=spark-operator
 
 # Check SparkPi driver logs
-kubectl logs -n spark spark-pi-driver
+kubectl logs -n spark -l spark-role=driver,sparkoperator.k8s.io/app-name=spark-pi
+
+# Check CustomPySparkJob driver logs
+kubectl logs -n spark -l spark-role=driver,sparkoperator.k8s.io/app-name=custom-pyspark-job
+```
+
+## Build and Load Steps
+
+The `CustomPySparkJob` template includes build and load steps:
+
+- **Build step**: Automatically builds the Docker image using `Dockerfile.pyspark` when templates are imported
+- **Load step**: Automatically loads the image into the kind cluster (for local development)
+
+These steps execute sequentially during template registration, ensuring the image is built and loaded before the SparkApplication is deployed.
+
+### Customizing Build Steps
+
+To modify the build or load behavior, edit `custom_pyspark_job.py`:
+
+```python
+def build(self) -> None:
+    """Build Docker image for custom PySpark job"""
+    from pathlib import Path
+    from kubeman import DockerManager
+
+    spark_dir = Path(__file__).parent
+    docker = DockerManager()
+    docker.build_image(
+        component="custom-pyspark-job",
+        context_path=str(spark_dir),
+        tag="latest",
+        dockerfile="Dockerfile.pyspark",
+    )
+    # Tag with local name for kind cluster
+    docker.tag_image(
+        source_image=f"{docker.registry}/custom-pyspark-job",
+        target_image="custom-pyspark-job",
+        source_tag="latest",
+    )
+
+def load(self) -> None:
+    """Load Docker image into kind cluster"""
+    from kubeman import DockerManager
+
+    docker = DockerManager()
+    docker.kind_load_image("custom-pyspark-job", tag="latest")
 ```
 
 ## Configuration
@@ -95,6 +148,7 @@ The example is configured with:
 - **Driver resources**: 1 core, 512m memory
 - **Executor resources**: 1 core per executor, 512m memory, 2 instances
 - **Namespace**: spark
+- **Custom PySpark Job**: Automatically builds and loads Docker image
 
 ### Customizing the Configuration
 

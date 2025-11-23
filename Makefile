@@ -2,7 +2,7 @@
 
 # Run tests
 test:
-	uv run pytest tests/ -v
+	uv run pytest
 
 # Build the package
 build:

@@ -16,6 +16,7 @@ class TemplateRegistry:
 
     _templates: List[Type[Template]] = []
     _skip_builds: bool = False
+    _skip_loads: bool = False
 
     @classmethod
     def set_skip_builds(cls, skip: bool) -> None:
@@ -26,6 +27,16 @@ class TemplateRegistry:
             skip: If True, build steps will be skipped
         """
         cls._skip_builds = skip
+
+    @classmethod
+    def set_skip_loads(cls, skip: bool) -> None:
+        """
+        Set whether load steps should be skipped during registration.
+
+        Args:
+            skip: If True, load steps will be skipped
+        """
+        cls._skip_loads = skip
 
     @classmethod
     def _has_custom_build(cls, template_class: Type[Template]) -> bool:
@@ -53,13 +64,39 @@ class TemplateRegistry:
         return build_method is not base_build_method
 
     @classmethod
+    def _has_custom_load(cls, template_class: Type[Template]) -> bool:
+        """
+        Check if a template class has a custom load() method implementation.
+
+        Args:
+            template_class: Template class to check
+
+        Returns:
+            True if the template has a custom load() method, False otherwise
+        """
+        # Get the load method from the template class
+        load_method = getattr(template_class, "load", None)
+        if load_method is None:
+            return False
+
+        # Get the load method from the base Template class
+        base_load_method = getattr(Template, "load", None)
+        if base_load_method is None:
+            return True  # If base doesn't have it, this is custom
+
+        # Check if the method is overridden by comparing implementations
+        # If they're the same object, it's not overridden
+        return load_method is not base_load_method
+
+    @classmethod
     def register(cls, template_class: Type[Template]) -> Type[Template]:
         """
         Register a template class.
         Can be used as a decorator or called directly.
 
         If the template has a build() method, it will be executed sequentially
-        during registration (unless builds are skipped).
+        during registration (unless builds are skipped). If the template has a
+        load() method, it will be executed after build steps (unless loads are skipped).
 
         Args:
             template_class: Template class to register
@@ -84,6 +121,22 @@ class TemplateRegistry:
                     )
                     raise RuntimeError(
                         f"Build step failed for template {template_class.__name__}: {e}"
+                    ) from e
+
+            # Execute load step if template has one and loads are not skipped
+            if not cls._skip_loads and cls._has_custom_load(template_class):
+                try:
+                    logger.info(f"Executing load step for template: {template_class.__name__}")
+                    template_instance = template_class()
+                    template_instance.load()
+                    logger.info(f"✓ Load step completed for template: {template_class.__name__}")
+                except Exception as e:
+                    logger.error(
+                        f"✗ Load step failed for template {template_class.__name__}: {e}",
+                        exc_info=True,
+                    )
+                    raise RuntimeError(
+                        f"Load step failed for template {template_class.__name__}: {e}"
                     ) from e
 
         return template_class
