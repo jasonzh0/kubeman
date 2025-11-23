@@ -118,6 +118,131 @@ Edit `spark_application.py` and modify the `manifests()` method to customize:
 
 The example includes a SparkPi application that calculates π using Monte Carlo method. Once deployed, it will automatically start running.
 
+### Custom PySpark Jobs
+
+To run a custom PySpark job, follow these steps:
+
+#### 1. Create Your PySpark Script
+
+Create a Python file with your PySpark code (e.g., `pyspark_example.py`):
+
+```python
+from pyspark.sql import SparkSession
+
+def main():
+    spark = SparkSession.builder \
+        .appName("MyCustomJob") \
+        .getOrCreate()
+
+    # Your PySpark code here
+    # ...
+
+    spark.stop()
+
+if __name__ == "__main__":
+    main()
+```
+
+#### 2. Build a Docker Image
+
+Create a `Dockerfile` for your PySpark application:
+
+```dockerfile
+FROM apache/spark:3.5.0
+WORKDIR /app
+COPY pyspark_example.py /app/pyspark_example.py
+ENV PYTHONPATH=/app:$PYTHONPATH
+```
+
+Build the image:
+
+```bash
+docker build -f Dockerfile.pyspark -t custom-pyspark-job:latest .
+```
+
+**Note**: In production, push the image to a container registry and update the image reference in the SparkApplication.
+
+#### 3. Create a SparkApplication Template
+
+Create a new file (e.g., `custom_pyspark_job.py`) following the pattern in `spark_application.py`:
+
+```python
+from kubeman import KubernetesResource, TemplateRegistry
+
+@TemplateRegistry.register
+class CustomPySparkJob(KubernetesResource):
+    def __init__(self):
+        super().__init__()
+        self.name = "custom-pyspark-job"
+        self.namespace = "spark"
+
+    def extra_manifests(self) -> list[dict]:
+        return [
+            {
+                "apiVersion": "sparkoperator.k8s.io/v1beta2",
+                "kind": "SparkApplication",
+                "metadata": {
+                    "name": "custom-pyspark-job",
+                    "namespace": self.namespace,
+                },
+                "spec": {
+                    "type": "Python",
+                    "mode": "cluster",
+                    "image": "custom-pyspark-job:latest",
+                    "imagePullPolicy": "IfNotPresent",
+                    "mainApplicationFile": "local:///app/pyspark_example.py",
+                    "sparkVersion": "3.5.0",
+                    "restartPolicy": {"type": "Never"},
+                    "driver": {
+                        "cores": 1,
+                        "memory": "512m",
+                        "serviceAccount": "spark",
+                    },
+                    "executor": {
+                        "cores": 1,
+                        "instances": 2,
+                        "memory": "512m",
+                    },
+                },
+            },
+        ]
+```
+
+#### 4. Register the Template
+
+Add the import to `templates.py`:
+
+```python
+import custom_pyspark_job  # noqa: F401
+```
+
+#### 5. Deploy Using Kubeman
+
+```bash
+kubeman apply --file examples/spark/templates.py --namespace spark
+```
+
+#### 6. View Results
+
+Check the job status and logs:
+
+```bash
+# Check SparkApplication status
+kubectl get sparkapplication custom-pyspark-job -n spark
+
+# View driver logs
+kubectl logs -n spark -l spark-role=driver,sparkoperator.k8s.io/app-name=custom-pyspark-job
+```
+
+#### Example Files
+
+The example includes:
+- `pyspark_example.py` - Sample PySpark script
+- `Dockerfile.pyspark` - Dockerfile for building the image
+- `custom_pyspark_job.py` - SparkApplication template
+
+You can use these as a starting point for your own PySpark jobs.
+
 **Monitor the application:**
 
 ```bash

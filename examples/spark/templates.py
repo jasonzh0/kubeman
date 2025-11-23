@@ -25,3 +25,4 @@ if str(_spark_dir) not in sys.path:
 # These imports cause the decorators to execute and register the templates
 import spark_operator  # noqa: F401
 import spark_application  # noqa: F401
+import custom_pyspark_job  # noqa: F401

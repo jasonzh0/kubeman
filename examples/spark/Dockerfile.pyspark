@@ -1,0 +1,14 @@
+# Dockerfile for custom PySpark application
+FROM apache/spark:3.5.0
+
+# Set working directory
+WORKDIR /app
+
+# Copy PySpark script
+COPY pyspark_example.py /app/pyspark_example.py
+
+# Set Python path
+ENV PYTHONPATH=/app:${PYTHONPATH:-}
+
+# The entrypoint is handled by Spark Operator
+# The script will be executed via spark-submit
