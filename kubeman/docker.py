@@ -130,7 +130,6 @@ class DockerManager:
             source_tag: Optional source tag (defaults to 'latest' if not in source_image)
             target_tag: Optional target tag (defaults to source_tag or 'latest')
         """
-        # Parse source image - check if it already has a tag
         if ":" in source_image:
             source_parts = source_image.rsplit(":", 1)
             source_name = source_parts[0]
@@ -140,7 +139,6 @@ class DockerManager:
             source_name = source_image
             source_tag = source_tag or "latest"
 
-        # Use target_tag if provided, otherwise use source_tag
         target_tag = target_tag or source_tag
 
         source = f"{source_name}:{source_tag}"
@@ -173,7 +171,6 @@ class DockerManager:
         """
         tag = tag or "latest"
         full_image_name = f"{image_name}:{tag}" if ":" not in image_name else image_name
-        # Check if kind is available
         try:
             self.executor.run(["kind", "version"], check=True, capture_output=True)
         except Exception:
@@ -181,7 +178,6 @@ class DockerManager:
                 "kind is not installed or not in PATH. Please install kind to use load_image."
             )
 
-        # Try to detect cluster name from kubectl context if not provided
         if cluster_name is None:
             try:
                 result = self.executor.run(
@@ -191,7 +187,6 @@ class DockerManager:
                     text=True,
                 )
                 context = result.stdout.strip()
-                # Extract cluster name from context (kind-{cluster-name})
                 if context.startswith("kind-"):
                     cluster_name = context.replace("kind-", "", 1)
                 else:
@@ -206,6 +201,5 @@ class DockerManager:
                     f"Could not determine kind cluster name: {e}. Please specify cluster_name parameter."
                 ) from e
 
-        # Load the image into the kind cluster
         cmd = ["kind", "load", "docker-image", full_image_name, "--name", cluster_name]
         self.executor.run(cmd, check=True)

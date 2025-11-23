@@ -76,7 +76,6 @@ class Template(ABC):
         try:
             return Config.git_branch()
         except ValueError:
-            # Fallback to "main" if git branch is not available
             return "main"
 
     def managed_namespace_metadata(self) -> dict:

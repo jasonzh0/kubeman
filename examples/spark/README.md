@@ -21,14 +21,9 @@ The example includes:
 
 ## Usage
 
-### 1. Render and Apply Manifests
+### Render and Apply Manifests
 
-The Spark example includes automatic Docker image build and load steps. When you run `kubeman render` or `kubeman apply`, the following happens automatically:
-
-1. **Build step**: The `CustomPySparkJob` template builds the Docker image using `Dockerfile.pyspark`
-2. **Load step**: The image is loaded into your kind cluster (if using kind)
-3. **Render step**: All templates are rendered to manifests
-4. **Apply step**: Manifests are applied to the cluster (if using `kubeman apply`)
+The Spark example includes automatic Docker image build and load steps. When you run `kubeman render` or `kubeman apply`, the `CustomPySparkJob` template builds the Docker image using `Dockerfile.pyspark`, loads the image into your kind cluster (if using kind), renders all templates to manifests, and for `apply`, applies manifests to the cluster.
 
 ```bash
 # From the examples/spark directory:
@@ -46,9 +41,9 @@ DOCKER_PROJECT_ID=test-project DOCKER_REGION=us-central1 DOCKER_REPOSITORY_NAME=
 kubeman apply --file examples/spark/templates.py --skip-build
 ```
 
-**Note**: The `templates.py` file imports all template modules (`spark_operator.py`, `spark_application.py`, `custom_pyspark_job.py`) which automatically register themselves via the `@TemplateRegistry.register` decorator. Build and load steps execute automatically during registration, before rendering.
+**Note**: The `templates.py` file imports all template modules which automatically register themselves via the `@TemplateRegistry.register` decorator. Build and load steps execute automatically during registration, before rendering.
 
-### 2. Render Only (Without Applying)
+### Render Only (Without Applying)
 
 To render manifests without applying them:
 
@@ -64,12 +59,9 @@ kubeman render --file examples/spark/templates.py
 kubeman render --file examples/spark/templates.py --output-dir ./custom-manifests
 ```
 
-This will:
-1. Build the Docker image for `CustomPySparkJob` (if not skipped)
-2. Load the image into kind cluster (if not skipped)
-3. Render all templates to the `manifests/` directory
+This builds the Docker image for `CustomPySparkJob` (if not skipped), loads the image into kind cluster (if not skipped), and renders all templates to the `manifests/` directory.
 
-### 3. Verify Deployment
+### Verify Deployment
 
 Check the status of the Spark deployment:
 
@@ -99,12 +91,7 @@ kubectl logs -n spark -l spark-role=driver,sparkoperator.k8s.io/app-name=custom-
 
 ## Build and Load Steps
 
-The `CustomPySparkJob` template includes build and load steps:
-
-- **Build step**: Automatically builds the Docker image using `Dockerfile.pyspark` when templates are imported
-- **Load step**: Automatically loads the image into the kind cluster (for local development)
-
-These steps execute sequentially during template registration, ensuring the image is built and loaded before the SparkApplication is deployed.
+The `CustomPySparkJob` template includes build and load steps that execute sequentially during template registration, ensuring the image is built and loaded before the SparkApplication is deployed.
 
 ### Customizing Build Steps
 
@@ -142,7 +129,6 @@ def load(self) -> None:
 ## Configuration
 
 The example is configured with:
-
 - **Spark Operator version**: 1.1.27
 - **Spark version**: 3.5.0
 - **Driver resources**: 1 core, 512m memory
@@ -152,29 +138,35 @@ The example is configured with:
 
 ### Customizing the Configuration
 
-Edit `spark_operator.py` and modify the `generate_values()` method to customize:
+Edit `spark_operator.py` and modify the `generate_values()` method to customize operator resource limits, webhook configuration, and service account settings.
 
-- Operator resource limits
-- Webhook configuration
-- Service account settings
-
-Edit `spark_application.py` and modify the `manifests()` method to customize:
-
-- Spark version
-- Driver/executor resources
-- Number of executor instances
-- Spark application image
-- Main class and application file
+Edit `spark_application.py` and modify the `manifests()` method to customize Spark version, driver/executor resources, number of executor instances, Spark application image, and main class/application file.
 
 ## Running Spark Applications
 
 ### SparkPi Example
 
-The example includes a SparkPi application that calculates π using Monte Carlo method. Once deployed, it will automatically start running.
+The example includes a SparkPi application that calculates π using Monte Carlo method. Once deployed, it automatically starts running. View results in the driver logs:
+
+```bash
+kubectl logs -n spark spark-pi-driver | grep -i "pi"
+```
+
+Monitor the application:
+```bash
+# Watch SparkApplication status
+kubectl get sparkapplication spark-pi -n spark -w
+
+# Check driver pod logs
+kubectl logs -n spark spark-pi-driver -f
+
+# Check executor pod logs
+kubectl logs -n spark -l spark-role=executor -f
+```
 
 ### Custom PySpark Jobs
 
-To run a custom PySpark job, follow these steps:
+To run a custom PySpark job:
 
 #### 1. Create Your PySpark Script
 
@@ -209,7 +201,6 @@ ENV PYTHONPATH=/app:$PYTHONPATH
 ```
 
 Build the image:
-
 ```bash
 docker build -f Dockerfile.pyspark -t custom-pyspark-job:latest .
 ```
@@ -262,24 +253,21 @@ class CustomPySparkJob(KubernetesResource):
         ]
 ```
 
-#### 4. Register the Template
+#### 4. Register and Deploy
 
 Add the import to `templates.py`:
-
 ```python
 import custom_pyspark_job  # noqa: F401
 ```
 
-#### 5. Deploy Using Kubeman
-
+Deploy using kubeman:
 ```bash
 kubeman apply --file examples/spark/templates.py --namespace spark
 ```
 
-#### 6. View Results
+#### 5. View Results
 
 Check the job status and logs:
-
 ```bash
 # Check SparkApplication status
 kubectl get sparkapplication custom-pyspark-job -n spark
@@ -288,79 +276,13 @@ kubectl get sparkapplication custom-pyspark-job -n spark
 kubectl logs -n spark -l spark-role=driver,sparkoperator.k8s.io/app-name=custom-pyspark-job
 ```
 
-#### Example Files
+**Example Files:** The example includes `pyspark_example.py`, `Dockerfile.pyspark`, and `custom_pyspark_job.py` as starting points for your own PySpark jobs.
 
-The example includes:
-- `pyspark_example.py` - Sample PySpark script
-- `Dockerfile.pyspark` - Dockerfile for building the image
-- `custom_pyspark_job.py` - SparkApplication template
-
-You can use these as a starting point for your own PySpark jobs.
-
-**Monitor the application:**
-
-```bash
-# Watch SparkApplication status
-kubectl get sparkapplication spark-pi -n spark -w
-
-# Check driver pod logs
-kubectl logs -n spark spark-pi-driver -f
-
-# Check executor pod logs
-kubectl logs -n spark -l spark-role=executor -f
-```
-
-**View results:**
-
-The SparkPi application outputs the calculated value of π. You can view it in the driver logs:
-
-```bash
-kubectl logs -n spark spark-pi-driver | grep -i "pi"
-```
-
-### Creating Custom Spark Applications
-
-To create your own Spark application, you can:
-
-1. **Modify the existing SparkApplication** in `spark_application.py`:
-   - Change the `mainClass` to your application's main class
-   - Update `mainApplicationFile` to point to your JAR file
-   - Adjust resources as needed
-
-2. **Create a new SparkApplication class** following the same pattern:
-
-```python
-@TemplateRegistry.register
-class MySparkApp(KubernetesResource):
-    def __init__(self):
-        super().__init__()
-        self.name = "my-spark-app"
-        self.namespace = "spark"
-
-    def manifests(self) -> list[dict]:
-        return [
-            {
-                "apiVersion": "sparkoperator.k8s.io/v1beta2",
-                "kind": "SparkApplication",
-                "metadata": {
-                    "name": "my-spark-app",
-                    "namespace": self.namespace,
-                },
-                "spec": {
-                    # Your Spark application configuration
-                },
-            },
-        ]
-```
-
-3. **Import and register** the new class in `templates.py`
+**Creating Custom Spark Applications:** You can modify the existing SparkApplication in `spark_application.py` (change `mainClass`, update `mainApplicationFile`, adjust resources) or create a new SparkApplication class following the same pattern and import it in `templates.py`.
 
 ### Spark Application Modes
 
-The example uses `cluster` mode, which runs both driver and executors in the cluster. You can also use:
-
-- **client mode**: Driver runs locally, executors in cluster
-- **cluster mode**: Both driver and executors run in cluster (default in this example)
+The example uses `cluster` mode (both driver and executors run in cluster). You can also use `client` mode (driver runs locally, executors in cluster).
 
 ## Accessing Spark UI
 
@@ -429,10 +351,7 @@ kubectl logs -n spark spark-pi-driver
 kubectl describe pod spark-pi-driver -n spark
 ```
 
-Common issues:
-- Image pull errors: Verify the Spark image is accessible
-- Resource constraints: Check if cluster has enough resources
-- Service account permissions: Verify RBAC is correctly configured
+Common issues: Image pull errors (verify Spark image is accessible), resource constraints (check cluster resources), service account permissions (verify RBAC configuration).
 
 ### Executor pods not starting
 
@@ -448,13 +367,7 @@ kubectl logs -n spark spark-pi-driver | grep -i executor
 
 ### Image pull errors
 
-If you encounter image pull errors, you may need to:
-
-1. Use a different image registry that's accessible from your cluster
-2. Configure image pull secrets
-3. Use a private registry with proper authentication
-
-Update the image in `spark_application.py`:
+If you encounter image pull errors, use a different image registry accessible from your cluster, configure image pull secrets, or use a private registry with proper authentication. Update the image in `spark_application.py`:
 ```python
 "image": "your-registry/spark:v3.5.0",
 ```

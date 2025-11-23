@@ -25,20 +25,11 @@ def process_stock_price(price_data: Dict) -> None:
     price = price_data.get("price", 0.0)
     timestamp = price_data.get("timestamp", "")
 
-    # Log the processed price
     print(f"[{timestamp}] Processed {symbol}: ${price:.2f}")
-
-    # Here you could add additional processing:
-    # - Store to database
-    # - Calculate moving averages
-    # - Trigger alerts for price changes
-    # - Aggregate statistics
-    # - etc.
 
 
 def main():
     """Main consumer loop."""
-    # Get configuration from environment variables
     kafka_broker = os.getenv("KAFKA_BROKER", "localhost:9092")
     kafka_topic = os.getenv("KAFKA_TOPIC", "stock-prices")
     consumer_group = os.getenv("CONSUMER_GROUP", "stock-price-processors")
@@ -48,7 +39,6 @@ def main():
     print(f"  Kafka Topic: {kafka_topic}")
     print(f"  Consumer Group: {consumer_group}")
 
-    # Initialize Kafka consumer
     try:
         consumer = KafkaConsumer(
             kafka_topic,
@@ -66,7 +56,6 @@ def main():
         print(f"Failed to connect to Kafka: {e}")
         return
 
-    # Main loop: consume messages and process them
     try:
         for message in consumer:
             try:

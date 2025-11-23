@@ -28,9 +28,7 @@ class KubernetesResource(Template):
     def name(self) -> str:
         """Return the name of the resource collection"""
         if self._name is None:
-            # Use class name in kebab-case as default
             class_name = self.__class__.__name__
-            # Convert CamelCase to kebab-case
             name = "".join(["-" + c.lower() if c.isupper() else c for c in class_name]).lstrip("-")
             self._name = name.replace("_", "-")
         return self._name
@@ -208,7 +206,6 @@ class KubernetesResource(Template):
     ) -> None:
         """Add a Deployment resource"""
         ns = self._get_namespace(namespace)
-        # Use labels as selector if not provided
         pod_labels = labels or {}
         pod_selector = selector or pod_labels
 
@@ -489,10 +486,8 @@ class KubernetesResource(Template):
         """
         Render Kubernetes manifests and ArgoCD Application.
         """
-        # Render manifests
         self.render_manifests()
 
-        # Write Application manifest if ArgoCD is enabled
         if self.enable_argocd() and self.application_repo_url():
             self._write_application()
 

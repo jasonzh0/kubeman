@@ -19,12 +19,10 @@ class StockPriceProducer(KubernetesResource):
         self.name = "stock-price-producer"
         self.namespace = "kafka"
 
-        # Add Namespace
         self.add_namespace(
             labels={"app": "kafka", "component": "stock-price-processing"},
         )
 
-        # Add ConfigMap for producer configuration
         self.add_configmap(
             name="stock-price-producer-config",
             data={
@@ -36,7 +34,6 @@ class StockPriceProducer(KubernetesResource):
             labels={"app": "stock-price-producer", "component": "producer"},
         )
 
-        # Add Deployment
         self.add_deployment(
             name="stock-price-producer",
             containers=[
@@ -97,7 +94,6 @@ class StockPriceProducer(KubernetesResource):
         from pathlib import Path
         from kubeman import DockerManager
 
-        # Get the directory containing this file (examples/kafka)
         kafka_dir = Path(__file__).parent
         docker = DockerManager()
         docker.build_image(
@@ -106,7 +102,6 @@ class StockPriceProducer(KubernetesResource):
             tag="latest",
             dockerfile="Dockerfile.producer",
         )
-        # Tag with local name for kind cluster
         docker.tag_image(
             source_image=f"{docker.registry}/stock-price-producer",
             target_image="stock-price-producer",

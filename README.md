@@ -19,78 +19,51 @@ A Python library for rendering Helm charts and Kubernetes resources with optiona
 ### From Source
 
 Using `uv` (recommended):
-
 ```bash
 uv pip install -e .
 ```
 
-Or using `pip` (not recommended):
-
+Or using `pip`:
 ```bash
 pip install -e .
 ```
 
 ### Development Setup
 
-Install development dependencies:
-
+Install development dependencies and format code:
 ```bash
 uv sync --dev
-```
-
-Format code:
-
-```bash
 uv tool run black .
 ```
 
 ### Pre-commit Hooks
 
-This project uses pre-commit hooks to automatically format code with black before commits.
-
-Install pre-commit as a tool (recommended):
-
+Install pre-commit globally:
 ```bash
 uv tool install pre-commit
-```
-
-This installs pre-commit globally and makes it available in your PATH. Then install the git hooks:
-
-```bash
 pre-commit install
 ```
 
-Now, every time you commit, black will automatically format your Python files. You can also run the hooks manually:
-
+This automatically formats code with black before commits. Run manually:
 ```bash
 pre-commit run --all-files
 ```
 
-**Alternative:** If you prefer to use pre-commit from the virtual environment, you can install it as a dev dependency and use the Python module:
-
+**Alternative:** Install as dev dependency:
 ```bash
 uv sync --dev
 uv run python -m pre_commit install
-uv run python -m pre_commit run --all-files
 ```
 
 ## Usage
 
 ### Template Architecture
 
-Both `HelmChart` and `KubernetesResource` inherit from the abstract `Template` base class, which provides common functionality for:
-
-- Optional ArgoCD Application manifest generation (opt-in)
-- Manifest directory management
-- Namespace and name properties
-- Rendering to filesystem
-- Optional Docker image build steps (executed sequentially during template registration)
-
-This shared base class ensures consistent behavior across all template types while allowing each subclass to implement its specific rendering logic.
+Both `HelmChart` and `KubernetesResource` inherit from the abstract `Template` base class, providing common functionality for ArgoCD Application generation (opt-in), manifest directory management, namespace/name properties, rendering to filesystem, and optional Docker image build steps executed sequentially during template registration.
 
 ### Creating a Helm Chart
 
-To create a Helm chart, subclass `HelmChart` and implement the required abstract methods:
+Subclass `HelmChart` and implement the required abstract methods:
 
 ```python
 from kubeman import HelmChart, TemplateRegistry
@@ -130,11 +103,11 @@ class MyChart(HelmChart):
 
 ### Creating a Kubernetes Resource (Without Helm)
 
-For projects that don't need Helm but still want optional ArgoCD Application generation and manifest management, use the `KubernetesResource` class. This class supports two usage patterns:
+For projects that don't need Helm but want optional ArgoCD Application generation and manifest management, use `KubernetesResource`. Supports two patterns:
 
 #### Pattern 1: Using Helper Methods (Recommended)
 
-Use the built-in helper methods to build Kubernetes resources:
+Use built-in helper methods to build Kubernetes resources:
 
 ```python
 from kubeman import KubernetesResource, TemplateRegistry
@@ -234,26 +207,11 @@ class DogBreedsDbChart(KubernetesResource):
         )
 ```
 
-**Available Helper Methods:**
-
-- `add_namespace()` - Create a Namespace
-- `add_configmap()` - Create a ConfigMap
-- `add_secret()` - Create a Secret
-- `add_persistent_volume_claim()` - Create a PVC
-- `add_deployment()` - Create a Deployment
-- `add_statefulset()` - Create a StatefulSet
-- `add_service()` - Create a Service (ClusterIP, NodePort, LoadBalancer)
-- `add_ingress()` - Create an Ingress
-- `add_service_account()` - Create a ServiceAccount
-- `add_role()` - Create a Role
-- `add_role_binding()` - Create a RoleBinding
-- `add_cluster_role()` - Create a ClusterRole
-- `add_cluster_role_binding()` - Create a ClusterRoleBinding
-- `add_custom_resource()` - Add any custom Kubernetes resource
+**Available Helper Methods:** `add_namespace()`, `add_configmap()`, `add_secret()`, `add_persistent_volume_claim()`, `add_deployment()`, `add_statefulset()`, `add_service()`, `add_ingress()`, `add_service_account()`, `add_role()`, `add_role_binding()`, `add_cluster_role()`, `add_cluster_role_binding()`, `add_custom_resource()`
 
 #### Pattern 2: Override manifests() Method
 
-For more complex logic or custom manifest generation, override the `manifests()` method:
+For complex logic or custom manifest generation, override the `manifests()` method:
 
 ```python
 from kubeman import KubernetesResource, TemplateRegistry
@@ -305,15 +263,13 @@ class MyAppResources(KubernetesResource):
         ]
 ```
 
-The `KubernetesResource` class provides a simpler interface than `HelmChart` when you don't need Helm's templating capabilities. It supports optional ArgoCD Application generation and integrates with the `TemplateRegistry` system.
-
 ### Build and Load Steps
 
-Templates can define Docker image build and load steps that execute automatically when templates are imported. Steps run sequentially in registration order: build steps first, then load steps, ensuring dependencies are built and loaded before they're needed.
+Templates can define Docker image build and load steps that execute automatically when templates are imported. Steps run sequentially in registration order: build steps first, then load steps.
 
 #### Build Steps
 
-To add build steps to a template, override the `build()` method:
+Override the `build()` method to add build steps:
 
 ```python
 from kubeman import KubernetesResource, TemplateRegistry, DockerManager
@@ -340,15 +296,11 @@ class MyApp(KubernetesResource):
             target_image="my-app",
             source_tag="latest"
         )
-
-    def render(self) -> None:
-        # Render manifests...
-        pass
 ```
 
 #### Load Steps
 
-For local development with kind clusters, you can also add load steps to load images into the cluster:
+For local development with kind clusters, add load steps:
 
 ```python
 def load(self) -> None:
@@ -357,20 +309,13 @@ def load(self) -> None:
     docker.kind_load_image("my-app", tag="latest")
 ```
 
-**Key points:**
-- Build steps execute automatically when `templates.py` is imported
-- Load steps execute after build steps, in registration order
-- Builds and loads run sequentially in the order templates are registered
-- Use `--skip-build` flag to skip build steps during render/apply
-- If a build or load fails, template registration fails with a clear error message
+**Key points:** Build steps execute automatically when templates are imported. Load steps execute after build steps. Use `--skip-build` flag to skip build/load steps during render/apply. If a build or load fails, template registration fails with a clear error message.
 
 ### Rendering Charts and Resources
 
-Once your charts and resources are registered, you can render them using either the CLI or Python API.
+Render templates using the CLI or Python API.
 
 #### Using the CLI (Recommended)
-
-The easiest way to render and apply your templates is using the `kubeman` CLI command:
 
 ```bash
 # Render all templates from a Python file
@@ -389,14 +334,9 @@ kubeman apply --file templates.py --namespace my-namespace
 kubeman apply --file templates.py --skip-build
 ```
 
-The CLI will:
-1. Import your template file (which should contain `@TemplateRegistry.register` decorated classes)
-2. Discover all registered templates
-3. Render each template to the `manifests/` directory
-4. For `apply`, also run `kubectl apply` on the rendered manifests
+The CLI imports your template file (containing `@TemplateRegistry.register` decorated classes), discovers all registered templates, renders each to the `manifests/` directory, and for `apply`, runs `kubectl apply` on the rendered manifests.
 
 **Example template file (`templates.py`):**
-
 ```python
 from kubeman import KubernetesResource, TemplateRegistry
 
@@ -410,8 +350,6 @@ class MyAppResources(KubernetesResource):
 
 #### Using the Python API
 
-You can also render templates programmatically:
-
 ```python
 from kubeman import TemplateRegistry
 
@@ -424,22 +362,13 @@ for template_class in templates:
     template.render()  # Generates manifests and ArgoCD Application
 ```
 
-The `render()` method will:
+**For HelmChart:** Renders to `manifests/{chart-name}/{chart-name}-manifests.yaml`, writes extra manifests to `manifests/{chart-name}/`, and generates ArgoCD Application to `manifests/apps/{chart-name}-application.yaml` (if enabled).
 
-**For HelmChart:**
-1. Render the Helm chart templates to `manifests/{chart-name}/{chart-name}-manifests.yaml`
-2. Write any extra manifests to `manifests/{chart-name}/`
-3. Generate an ArgoCD Application manifest to `manifests/apps/{chart-name}-application.yaml` (if ArgoCD is enabled)
-
-**For KubernetesResource:**
-1. Write each Kubernetes manifest to `manifests/{name}/{manifest-name}-{kind}.yaml`
-2. Generate an ArgoCD Application manifest to `manifests/apps/{name}-application.yaml` (if ArgoCD is enabled)
+**For KubernetesResource:** Writes each manifest to `manifests/{name}/{manifest-name}-{kind}.yaml` and generates ArgoCD Application to `manifests/apps/{name}-application.yaml` (if enabled).
 
 ### Advanced Chart Configuration
 
 #### Custom Repository Package Name
-
-If your repository uses a different package name than the chart name:
 
 ```python
 @property
@@ -448,8 +377,6 @@ def repository_package(self) -> str:
 ```
 
 #### OCI Registry Support
-
-For OCI-based Helm repositories:
 
 ```python
 @property
@@ -461,8 +388,6 @@ def repository(self) -> dict:
 ```
 
 #### Extra Manifests
-
-Add additional Kubernetes manifests alongside your Helm chart:
 
 ```python
 def extra_manifests(self) -> list[dict]:
@@ -478,29 +403,23 @@ def extra_manifests(self) -> list[dict]:
 
 #### Enabling ArgoCD Application Generation (Opt-In)
 
-ArgoCD Application generation is disabled by default. To enable it, you have two options:
-
-**Option 1: Set environment variable**
+ArgoCD Application generation is disabled by default. Enable via environment variable:
 ```bash
 export ARGOCD_APP_REPO_URL="https://github.com/org/manifests-repo"
 ```
 
-**Option 2: Override `enable_argocd()` method**
+Or override `enable_argocd()` method:
 ```python
 @TemplateRegistry.register
 class MyChart(HelmChart):
-    # ... other methods ...
-
     def enable_argocd(self) -> bool:
         """Enable ArgoCD Application generation for this chart"""
         return True
 ```
 
-When ArgoCD is enabled, the Application manifest will be generated during the render process. If `ARGOCD_APP_REPO_URL` is not set and `enable_argocd()` returns `True`, you must also override `application_repo_url()` to provide the repository URL.
+If `ARGOCD_APP_REPO_URL` is not set and `enable_argocd()` returns `True`, override `application_repo_url()` to provide the repository URL.
 
 #### Custom ArgoCD Application Settings
-
-Customize the ArgoCD Application generation:
 
 ```python
 def enable_argocd(self) -> bool:
@@ -551,15 +470,11 @@ branch_name = git.fetch_branch_name()
 git.push_manifests(repo_url="https://github.com/org/manifests-repo")
 ```
 
-The `push_manifests()` method will:
-1. Clone the manifests repository
-2. Checkout or create the branch matching `STABLE_GIT_BRANCH`
-3. Copy rendered manifests from `RENDERED_MANIFEST_DIR`
-4. Commit and push the changes
+The `push_manifests()` method clones the manifests repository, checks out or creates the branch matching `STABLE_GIT_BRANCH`, copies rendered manifests from `RENDERED_MANIFEST_DIR`, and commits and pushes the changes.
 
 ### Docker Operations
 
-The `DockerManager` class helps build and push Docker images to container registries:
+The `DockerManager` class helps build and push Docker images:
 
 ```python
 from kubeman import DockerManager
@@ -615,23 +530,19 @@ image_name = docker.build_and_push(
 ## Environment Variables
 
 ### Required for Git Operations
-
 - `STABLE_GIT_COMMIT` - Current git commit hash
 - `STABLE_GIT_BRANCH` - Current git branch name
 - `RENDERED_MANIFEST_DIR` - Path to directory containing rendered manifests
 - `MANIFEST_REPO_URL` - Git repository URL for pushing manifests (optional if passed to `push_manifests()`)
 
 ### Optional for ArgoCD Applications
-
 ArgoCD Application generation is opt-in and disabled by default. To enable:
-
 - `ARGOCD_APP_REPO_URL` - Repository URL for ArgoCD applications (or override `application_repo_url()`). Required if ArgoCD is enabled.
 - `ARGOCD_APPS_SUBDIR` - Subdirectory for applications (defaults to "apps")
 
 You can also enable ArgoCD by overriding the `enable_argocd()` method in your template class to return `True`.
 
 ### Required for Docker Operations
-
 - `DOCKER_PROJECT_ID` - Registry project ID (or pass to `DockerManager` constructor)
 - `DOCKER_REGION` - Registry region (defaults to "us-central1")
 - `DOCKER_REPOSITORY_NAME` - Docker repository name (defaults to "default")
@@ -639,7 +550,7 @@ You can also enable ArgoCD by overriding the `enable_argocd()` method in your te
 
 ## Complete Example
 
-Here's a complete example that ties everything together, using both `HelmChart` and `KubernetesResource`:
+Complete example using both `HelmChart` and `KubernetesResource`:
 
 ```python
 from kubeman import HelmChart, KubernetesResource, TemplateRegistry, GitManager, DockerManager
@@ -730,7 +641,7 @@ class MyAppResources(KubernetesResource):
 # kubeman render --file templates.py --skip-build
 # kubeman apply --file templates.py --skip-build
 
-# Option 2: Render programmatically
+# Option 3: Render programmatically
 for template_class in TemplateRegistry.get_registered_templates():
     template = template_class()
     template.render()
@@ -743,10 +654,9 @@ git.push_manifests()
 ## Publishing
 
 This package is automatically published to PyPI via GitHub Actions when:
-
-1. **A new release is published** on GitHub
-2. **A version tag is pushed** (e.g., `v0.1.0`, `v1.0.0`)
-3. **Manual trigger** via the GitHub Actions workflow
+1. A new release is published on GitHub
+2. A version tag is pushed (e.g., `v0.1.0`, `v1.0.0`)
+3. Manual trigger via the GitHub Actions workflow
 
 ## License
 

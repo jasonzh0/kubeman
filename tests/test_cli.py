@@ -43,7 +43,6 @@ class TestLoadTemplatesFile:
         templates_file = tmp_path / "test_templates.py"
         templates_file.write_text("x = 1")
 
-        # Should not raise an error - just imports the module
         load_templates_file(str(templates_file))
 
     def test_import_error(self, tmp_path):
@@ -153,7 +152,6 @@ class TestApplyManifests:
             mock_path = MagicMock()
             mock_path.exists.return_value = True
             mock_path.__str__ = lambda x: "/test/manifests"
-            # Mock rglob to return some YAML files (use Path objects for sorting)
             from pathlib import Path
 
             mock_yaml_file = Path("/test/manifests/test.yaml")
@@ -162,9 +160,7 @@ class TestApplyManifests:
 
             apply_manifests()
 
-        # Check kubectl version was called
         assert mock_executor.run.call_count >= 2
-        # Check kubectl apply was called - find the call with "apply" in the command
         apply_calls = [
             c
             for c in mock_executor.run.call_args_list
@@ -190,7 +186,6 @@ class TestApplyManifests:
             mock_path = MagicMock()
             mock_path.exists.return_value = True
             mock_path.__str__ = lambda x: "/test/manifests"
-            # Mock rglob to return some YAML files (use Path objects for sorting)
             from pathlib import Path
 
             mock_yaml_file = Path("/test/manifests/test.yaml")
@@ -199,9 +194,6 @@ class TestApplyManifests:
 
             apply_manifests(namespace="test-ns")
 
-        # Check that manifests were filtered by namespace
-        # The implementation filters manifests by namespace rather than using --namespace flag
-        # Find the apply call (second call after version check)
         apply_calls = [
             c
             for c in mock_executor.run.call_args_list
@@ -211,11 +203,9 @@ class TestApplyManifests:
             and c[0][0][1] == "apply"
         ]
         assert len(apply_calls) > 0
-        # Verify that kubectl apply was called (without --namespace flag, as we filter manifests)
-        cmd = apply_calls[0][0][0]  # Get the command list
+        cmd = apply_calls[0][0][0]
         assert "kubectl" in cmd
         assert "apply" in cmd
-        # Note: We don't use --namespace flag, we filter manifests by namespace instead
 
         output = capsys.readouterr()
         assert "Filtering to namespace: test-ns" in output.out
@@ -224,7 +214,6 @@ class TestApplyManifests:
     def test_apply_failure(self, mock_get_executor):
         """Test kubectl apply failure."""
         mock_executor = MagicMock()
-        # Mock kubectl version check to succeed, then apply to fail
         mock_executor.run.side_effect = [
             MagicMock(returncode=0),  # version check
             Exception("Error applying"),  # apply fails
@@ -235,7 +224,6 @@ class TestApplyManifests:
             mock_path = MagicMock()
             mock_path.exists.return_value = True
             mock_path.__str__ = lambda x: "/test/manifests"
-            # Mock rglob to return some YAML files (use Path objects for sorting)
             from pathlib import Path
 
             mock_yaml_file = Path("/test/manifests/test.yaml")
@@ -252,7 +240,6 @@ class TestApplyManifests:
         mock_executor.run.return_value = MagicMock(returncode=0)
         mock_get_executor.return_value = mock_executor
 
-        # Create test YAML files
         crd_file = tmp_path / "crd.yaml"
         crd_file.write_text(
             """apiVersion: apiextensions.k8s.io/v1
@@ -275,14 +262,11 @@ metadata:
             mock_path = MagicMock()
             mock_path.exists.return_value = True
             mock_path.__str__ = lambda x: str(tmp_path)
-            # rglob is called twice: once for *.yaml, once for *.yml
-            # Return files on first call, empty list on second call
             mock_path.rglob.side_effect = [[resource_file, crd_file], []]
             mock_dir.return_value = mock_path
 
             apply_manifests()
 
-        # Verify CRD was applied first, then resource
         apply_calls = [
             c
             for c in mock_executor.run.call_args_list
@@ -293,11 +277,9 @@ metadata:
         ]
         assert len(apply_calls) == 2
 
-        # First apply should be CRD
         first_apply = apply_calls[0][0][0]
         assert str(crd_file) in first_apply or "crd.yaml" in str(first_apply)
 
-        # Second apply should be resource
         second_apply = apply_calls[1][0][0]
         assert str(resource_file) in second_apply or "resource.yaml" in str(second_apply)
 
@@ -313,7 +295,6 @@ metadata:
         mock_executor.run.return_value = MagicMock(returncode=0)
         mock_get_executor.return_value = mock_executor
 
-        # Create a multi-document YAML file with CRD
         multi_doc_file = tmp_path / "multi.yaml"
         multi_doc_file.write_text(
             """---
@@ -342,14 +323,11 @@ metadata:
             mock_path = MagicMock()
             mock_path.exists.return_value = True
             mock_path.__str__ = lambda x: str(tmp_path)
-            # rglob is called twice: once for *.yaml, once for *.yml
-            # Return files on first call, empty list on second call
             mock_path.rglob.side_effect = [[regular_file, multi_doc_file], []]
             mock_dir.return_value = mock_path
 
             apply_manifests()
 
-        # Verify multi-doc file with CRD was applied first
         apply_calls = [
             c
             for c in mock_executor.run.call_args_list
@@ -360,11 +338,9 @@ metadata:
         ]
         assert len(apply_calls) == 2
 
-        # First apply should be the multi-doc file (contains CRD)
         first_apply = apply_calls[0][0][0]
         assert str(multi_doc_file) in first_apply or "multi.yaml" in str(first_apply)
 
-        # Second apply should be regular file
         second_apply = apply_calls[1][0][0]
         assert str(regular_file) in second_apply or "regular.yaml" in str(second_apply)
 
@@ -375,7 +351,6 @@ metadata:
         mock_executor.run.return_value = MagicMock(returncode=0)
         mock_get_executor.return_value = mock_executor
 
-        # Create test YAML files without CRDs
         resource_file = tmp_path / "resource.yaml"
         resource_file.write_text(
             """apiVersion: v1
@@ -395,7 +370,6 @@ metadata:
             apply_manifests()
 
         output = capsys.readouterr()
-        # Should not mention CRD count when there are no CRDs
         assert "CRD file(s) will be applied first" not in output.out
 
 

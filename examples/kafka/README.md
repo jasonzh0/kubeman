@@ -21,13 +21,9 @@ The example includes:
 
 ## Usage
 
-### 1. Render and Apply Manifests
+### Render and Apply Manifests
 
-The Kafka example includes automatic Docker image build steps for the stock price producer and consumer. When you run `kubeman render` or `kubeman apply`, the following happens automatically:
-
-1. **Build steps**: The `StockPriceProducer` and `StockPriceConsumer` templates build their Docker images
-2. **Render step**: All templates are rendered to manifests
-3. **Apply step**: Manifests are applied to the cluster (if using `kubeman apply`)
+The Kafka example includes automatic Docker image build steps for the stock price producer and consumer. When you run `kubeman render` or `kubeman apply`, build steps execute automatically, then templates are rendered to manifests, and for `apply`, manifests are applied to the cluster.
 
 ```bash
 # From the examples/kafka directory:
@@ -45,9 +41,9 @@ DOCKER_PROJECT_ID=test-project DOCKER_REGION=us-central1 DOCKER_REPOSITORY_NAME=
 kubeman apply --file examples/kafka/templates.py --skip-build
 ```
 
-**Note**: The `templates.py` file imports all template modules (`kafka_example.py`, `stock_price_producer.py`, `stock_price_consumer.py`) which automatically register themselves via the `@TemplateRegistry.register` decorator. Build steps execute automatically during registration, before rendering.
+**Note**: The `templates.py` file imports all template modules which automatically register themselves via the `@TemplateRegistry.register` decorator. Build steps execute automatically during registration, before rendering.
 
-### 2. Render Only (Without Applying)
+### Render Only (Without Applying)
 
 To render manifests without applying them:
 
@@ -63,11 +59,9 @@ kubeman render --file examples/kafka/templates.py
 kubeman render --file examples/kafka/templates.py --output-dir ./custom-manifests
 ```
 
-This will:
-1. Build the Docker images for producer and consumer (if not skipped)
-2. Render all templates to the `manifests/` directory
+This builds the Docker images for producer and consumer (if not skipped) and renders all templates to the `manifests/` directory.
 
-### 4. Verify Deployment
+### Verify Deployment
 
 Check the status of the Kafka deployment:
 
@@ -91,7 +85,6 @@ kubectl logs -n kafka -l app=stock-price-consumer
 ## Configuration
 
 The example is configured with:
-
 - **Kafka broker replicas**: 3
 - **Kafka controller replicas**: 3
 - **Kafka broker storage**: 20Gi per pod
@@ -102,28 +95,17 @@ The example is configured with:
 
 ### Customizing the Configuration
 
-Edit `kafka_example.py` and modify the `manifests()` method in the `KafkaCluster` class to customize:
-
-- Replica counts for brokers and controllers
-- Storage sizes
-- Resource requests/limits
-- Kafka configuration (retention, segment size, etc.)
-- Listener configuration (internal/external access)
-- Kafka version
+Edit `kafka_example.py` and modify the `manifests()` method in the `KafkaCluster` class to customize replica counts, storage sizes, resource requests/limits, Kafka configuration (retention, segment size, etc.), listener configuration, and Kafka version.
 
 ## Accessing Kafka
 
 ### Internal Access (within cluster)
 
-Kafka is accessible at:
-- **Service**: `my-cluster-kafka-bootstrap.kafka.svc.cluster.local:9092`
-- **Port**: 9092 (plain listener)
-
-The service name follows the pattern `{cluster-name}-kafka-bootstrap` where `my-cluster` is the Kafka cluster name defined in the CRD.
+Kafka is accessible at `my-cluster-kafka-bootstrap.kafka.svc.cluster.local:9092` (port 9092, plain listener). The service name follows the pattern `{cluster-name}-kafka-bootstrap` where `my-cluster` is the Kafka cluster name defined in the CRD.
 
 ### Testing Kafka
 
-You can test Kafka using the built-in Kafka tools. First, get the name of a Kafka broker pod:
+Test Kafka using the built-in Kafka tools. First, get the name of a Kafka broker pod:
 
 ```bash
 # Get Kafka broker pod name
@@ -156,17 +138,13 @@ kubectl exec -it $KAFKA_POD -n kafka -- kafka-console-consumer.sh \
 
 ## Stock Price Processing
 
-This example includes a complete stock price processing pipeline:
+This example includes a complete stock price processing pipeline with producer and consumer services.
 
 ### Stock Price Producer
 
 The producer service (`stock_price_producer.py`) fetches live stock prices from Yahoo Finance and publishes them to Kafka.
 
-**Features:**
-- Fetches prices for configurable stock symbols (default: AAPL, GOOGL, MSFT, TSLA)
-- Publishes JSON messages to Kafka topic `stock-prices`
-- Configurable fetch interval (default: 5 seconds)
-- Automatic retry on Kafka connection failures
+**Features:** Fetches prices for configurable stock symbols (default: AAPL, GOOGL, MSFT, TSLA), publishes JSON messages to Kafka topic `stock-prices`, configurable fetch interval (default: 5 seconds), and automatic retry on Kafka connection failures.
 
 **Configuration:**
 - `STOCK_SYMBOLS`: Comma-separated list of stock symbols
@@ -187,29 +165,18 @@ The producer service (`stock_price_producer.py`) fetches live stock prices from 
 
 The consumer service (`stock_price_consumer.py`) consumes stock prices from Kafka and processes them.
 
-**Features:**
-- Consumes messages from the `stock-prices` topic
-- Processes each message (logs by default, can be extended)
-- Consumer group coordination for scaling
-- Automatic offset management
+**Features:** Consumes messages from the `stock-prices` topic, processes each message (logs by default, can be extended), consumer group coordination for scaling, and automatic offset management.
 
 **Configuration:**
 - `KAFKA_BROKER`: Kafka broker address
 - `KAFKA_TOPIC`: Kafka topic name (default: `stock-prices`)
 - `CONSUMER_GROUP`: Consumer group ID (default: `stock-price-processors`)
 
-**Extending the Consumer:**
-
-The consumer can be extended to:
-- Store prices to a database
-- Calculate moving averages or other metrics
-- Trigger alerts for price changes
-- Aggregate statistics
-- Integrate with other systems
+**Extending the Consumer:** The consumer can be extended to store prices to a database, calculate moving averages or other metrics, trigger alerts for price changes, aggregate statistics, or integrate with other systems.
 
 ### Creating the Kafka Topic
 
-Before the producer can publish messages, you may need to create the topic:
+Before the producer can publish messages, create the topic:
 
 ```bash
 # Get Kafka broker pod name
@@ -249,7 +216,6 @@ kubectl exec -it $KAFKA_POD -n kafka -- kafka-run-class.sh \
 ### Customizing Stock Symbols
 
 Edit the ConfigMap to change which stocks are tracked:
-
 ```bash
 kubectl edit configmap stock-price-producer-config -n kafka
 ```

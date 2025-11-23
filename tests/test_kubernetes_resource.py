@@ -327,15 +327,12 @@ class TestKubernetesResource:
         resources = KubernetesResource()
         resources.namespace = "test"
 
-        # Missing apiVersion
         with pytest.raises(ValueError, match="apiVersion"):
             resources.add_custom_resource({"kind": "Test", "metadata": {"name": "test"}})
 
-        # Missing kind
         with pytest.raises(ValueError, match="kind"):
             resources.add_custom_resource({"apiVersion": "v1", "metadata": {"name": "test"}})
 
-        # Missing metadata.name
         with pytest.raises(ValueError, match="metadata.name"):
             resources.add_custom_resource({"apiVersion": "v1", "kind": "Test"})
 
@@ -376,7 +373,6 @@ class TestKubernetesResource:
         assert len(registered) == 1
         assert registered[0] == TestChart
 
-        # Test instantiation
         chart = TestChart()
         assert chart.namespace == "test"
 
@@ -478,7 +474,6 @@ class TestKubernetesResource:
         resources = KubernetesResource()
         resources.namespace = "default-ns"
 
-        # Test add_configmap without namespace parameter
         resources.add_configmap(
             name="test-config",
             data={"key": "value"},
@@ -493,7 +488,6 @@ class TestKubernetesResource:
         resources = KubernetesResource()
         resources.namespace = "default-ns"
 
-        # Test add_configmap with explicit namespace
         resources.add_configmap(
             name="test-config",
             namespace="override-ns",
@@ -520,7 +514,6 @@ class TestKubernetesResource:
         """Test that missing namespace raises appropriate error."""
         resources = KubernetesResource()
 
-        # Should raise error when namespace is not set and not provided
         with pytest.raises(ValueError, match="Namespace must be set"):
             resources.add_configmap(
                 name="test-config",

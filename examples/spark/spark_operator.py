@@ -11,7 +11,6 @@ The deployment consists of:
 Usage:
     kubeman render --file examples/spark/templates.py
     kubeman apply --file examples/spark/templates.py
-    # Or from examples/spark directory:
     kubeman render
     kubeman apply
 """
@@ -51,16 +50,11 @@ class SparkOperator(HelmChart):
     def generate_values(self) -> dict:
         """Generate Helm values for Spark operator"""
         return {
-            # Set namespace for the operator deployment
             "namespace": self.namespace,
-            # Disable webhook to avoid RBAC issues in simple deployments
-            # Webhook is optional and mainly used for advanced pod customization
             "webhook": {
                 "enable": False,
             },
-            # Service account for Spark applications
             "sparkServiceAccount": "spark",
-            # Resource limits for operator
             "resources": {
                 "limits": {
                     "cpu": "500m",

@@ -11,7 +11,6 @@ The deployment consists of:
 Usage:
     kubeman render --file examples/kafka/templates.py
     kubeman apply --file examples/kafka/templates.py
-    # Or from examples/kafka directory:
     kubeman render
     kubeman apply
 """
@@ -51,7 +50,6 @@ class StrimziOperator(HelmChart):
     def generate_values(self) -> dict:
         """Generate Helm values for Strimzi operator"""
         return {
-            # Watch all namespaces by default
             "watchAnyNamespace": True,
         }
 
@@ -72,7 +70,6 @@ class KafkaCluster(KubernetesResource):
     def manifests(self) -> list[dict]:
         """Generate Kafka cluster CRD manifest using KRaft mode"""
         return [
-            # Kafka cluster (KRaft mode - no Zookeeper)
             {
                 "apiVersion": "kafka.strimzi.io/v1beta2",
                 "kind": "Kafka",
@@ -103,7 +100,6 @@ class KafkaCluster(KubernetesResource):
                     },
                 },
             },
-            # KafkaNodePool for brokers
             {
                 "apiVersion": "kafka.strimzi.io/v1beta2",
                 "kind": "KafkaNodePool",
@@ -134,7 +130,6 @@ class KafkaCluster(KubernetesResource):
                     },
                 },
             },
-            # KafkaNodePool for controllers
             {
                 "apiVersion": "kafka.strimzi.io/v1beta2",
                 "kind": "KafkaNodePool",

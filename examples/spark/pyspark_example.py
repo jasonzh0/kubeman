@@ -11,11 +11,9 @@ from pyspark.sql.functions import col, count, avg, max as spark_max, min as spar
 
 def main():
     """Main function that runs the PySpark job."""
-    # Create SparkSession
     spark = SparkSession.builder.appName("CustomPySparkJob").getOrCreate()
 
     try:
-        # Example: Create a simple dataset and perform operations
         print("Creating sample data...")
         data = [
             ("Alice", 25, "Engineering"),
@@ -30,7 +28,6 @@ def main():
         print("Sample DataFrame:")
         df.show()
 
-        # Perform aggregations
         print("\nDepartment statistics:")
         dept_stats = df.groupBy("department").agg(
             count("*").alias("count"),
@@ -40,7 +37,6 @@ def main():
         )
         dept_stats.show()
 
-        # Filter and transform
         print("\nEngineering team members:")
         engineering = df.filter(col("department") == "Engineering")
         engineering.show()

@@ -19,7 +19,6 @@ class StockPriceConsumer(KubernetesResource):
         self.name = "stock-price-consumer"
         self.namespace = "kafka"
 
-        # Add ConfigMap for consumer configuration
         self.add_configmap(
             name="stock-price-consumer-config",
             data={
@@ -30,7 +29,6 @@ class StockPriceConsumer(KubernetesResource):
             labels={"app": "stock-price-consumer", "component": "consumer"},
         )
 
-        # Add Deployment
         self.add_deployment(
             name="stock-price-consumer",
             containers=[
@@ -82,7 +80,6 @@ class StockPriceConsumer(KubernetesResource):
         from pathlib import Path
         from kubeman import DockerManager
 
-        # Get the directory containing this file (examples/kafka)
         kafka_dir = Path(__file__).parent
         docker = DockerManager()
         docker.build_image(
@@ -91,7 +88,6 @@ class StockPriceConsumer(KubernetesResource):
             tag="latest",
             dockerfile="Dockerfile.consumer",
         )
-        # Tag with local name for kind cluster
         docker.tag_image(
             source_image=f"{docker.registry}/stock-price-consumer",
             target_image="stock-price-consumer",

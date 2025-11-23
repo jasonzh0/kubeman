@@ -20,18 +20,15 @@ class SparkPiApplication(KubernetesResource):
         self.name = "spark-pi"
         self.namespace = "spark"
 
-        # Add Namespace
         self.add_namespace(
             labels={"app": "spark", "component": "spark-operator"},
         )
 
-        # Add ServiceAccount for Spark applications
         self.add_service_account(
             name="spark",
             labels={"app": "spark", "component": "service-account"},
         )
 
-        # Add Role for Spark applications
         self.add_role(
             name="spark-role",
             rules=[
@@ -59,7 +56,6 @@ class SparkPiApplication(KubernetesResource):
             labels={"app": "spark", "component": "role"},
         )
 
-        # Add RoleBinding
         self.add_role_binding(
             name="spark-role-binding",
             role_name="spark-role",

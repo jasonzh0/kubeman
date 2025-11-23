@@ -123,9 +123,7 @@ class TestTemplateRegistry:
         templates1 = TemplateRegistry.get_registered_templates()
         templates2 = TemplateRegistry.get_registered_templates()
 
-        # Should be different objects
         assert templates1 is not templates2
-        # But should have same content
         assert templates1 == templates2
 
     def test_clear(self):
@@ -161,7 +159,6 @@ class TestTemplateRegistry:
         """Test that build() method is executed during registration."""
         from kubeman.kubernetes import KubernetesResource
 
-        # Clear registry to ensure clean state
         TemplateRegistry.clear()
         TemplateRegistry.set_skip_builds(False)
 
@@ -206,14 +203,12 @@ class TestTemplateRegistry:
 
         assert len(build_called) == 0
 
-        # Reset for other tests
         TemplateRegistry.set_skip_builds(False)
 
     def test_register_build_step_failure(self, monkeypatch):
         """Test that build step failure raises error."""
         from kubeman.kubernetes import KubernetesResource
 
-        # Clear registry first
         TemplateRegistry.clear()
 
         class TestResource(KubernetesResource):
@@ -228,7 +223,6 @@ class TestTemplateRegistry:
             def render(self):
                 pass
 
-        # The build should be called during registration and raise an error
         with pytest.raises(RuntimeError, match="Build step failed for template"):
             TemplateRegistry.register(TestResource)
 

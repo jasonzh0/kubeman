@@ -99,9 +99,8 @@ class TestDockerManager:
         )
 
         assert image_name == f"{manager.registry}/component:v1.0.0"
-        assert mock_executor.run.call_count == 1  # build
+        assert mock_executor.run.call_count == 1
 
-        # Check that the dockerfile parameter was used
         build_call = mock_executor.run.call_args_list[0]
         cmd = build_call[0][0]
         assert "-f" in cmd
@@ -141,7 +140,6 @@ class TestDockerManager:
         manager = DockerManager()
 
         mock_executor = MagicMock()
-        # Mock push failure
         import subprocess
 
         mock_executor.run.side_effect = subprocess.CalledProcessError(
@@ -180,9 +178,8 @@ class TestDockerManager:
         )
 
         assert image_name == f"{manager.registry}/component:v1.0.0"
-        assert mock_executor.run.call_count == 2  # build + push
+        assert mock_executor.run.call_count == 2
 
-        # Check that the dockerfile parameter was used in build
         build_call = mock_executor.run.call_args_list[0]
         cmd = build_call[0][0]
         assert "-f" in cmd

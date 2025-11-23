@@ -92,7 +92,6 @@ class CustomPySparkJob(KubernetesResource):
         from pathlib import Path
         from kubeman import DockerManager
 
-        # Get the directory containing this file (examples/spark)
         spark_dir = Path(__file__).parent
         docker = DockerManager()
         docker.build_image(
@@ -101,7 +100,6 @@ class CustomPySparkJob(KubernetesResource):
             tag="latest",
             dockerfile="Dockerfile.pyspark",
         )
-        # Tag with local name for kind cluster
         docker.tag_image(
             source_image=f"{docker.registry}/custom-pyspark-job",
             target_image="custom-pyspark-job",
@@ -113,7 +111,6 @@ class CustomPySparkJob(KubernetesResource):
         from kubeman import DockerManager
 
         docker = DockerManager()
-        # Load the locally tagged image into the kind cluster
         docker.kind_load_image("custom-pyspark-job", tag="latest")
 
     def enable_argocd(self) -> bool:

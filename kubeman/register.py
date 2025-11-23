@@ -49,18 +49,14 @@ class TemplateRegistry:
         Returns:
             True if the template has a custom build() method, False otherwise
         """
-        # Get the build method from the template class
         build_method = getattr(template_class, "build", None)
         if build_method is None:
             return False
 
-        # Get the build method from the base Template class
         base_build_method = getattr(Template, "build", None)
         if base_build_method is None:
-            return True  # If base doesn't have it, this is custom
+            return True
 
-        # Check if the method is overridden by comparing implementations
-        # If they're the same object, it's not overridden
         return build_method is not base_build_method
 
     @classmethod
@@ -74,18 +70,14 @@ class TemplateRegistry:
         Returns:
             True if the template has a custom load() method, False otherwise
         """
-        # Get the load method from the template class
         load_method = getattr(template_class, "load", None)
         if load_method is None:
             return False
 
-        # Get the load method from the base Template class
         base_load_method = getattr(Template, "load", None)
         if base_load_method is None:
-            return True  # If base doesn't have it, this is custom
+            return True
 
-        # Check if the method is overridden by comparing implementations
-        # If they're the same object, it's not overridden
         return load_method is not base_load_method
 
     @classmethod
@@ -107,7 +99,6 @@ class TemplateRegistry:
         if template_class not in cls._templates:
             cls._templates.append(template_class)
 
-            # Execute build step if template has one and builds are not skipped
             if not cls._skip_builds and cls._has_custom_build(template_class):
                 try:
                     logger.info(f"Executing build step for template: {template_class.__name__}")
@@ -123,7 +114,6 @@ class TemplateRegistry:
                         f"Build step failed for template {template_class.__name__}: {e}"
                     ) from e
 
-            # Execute load step if template has one and loads are not skipped
             if not cls._skip_loads and cls._has_custom_load(template_class):
                 try:
                     logger.info(f"Executing load step for template: {template_class.__name__}")
@@ -253,10 +243,7 @@ class TemplateRegistry:
             Namespace string or None if unable to determine
         """
         try:
-            # Create a temporary instance to get the namespace
-            # This is safe because namespace is a required property
             instance = template_class()
             return instance.namespace
         except Exception:
-            # If we can't instantiate or get namespace, return None
             return None
