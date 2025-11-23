@@ -660,4 +660,4 @@ This package is automatically published to PyPI via GitHub Actions when:
 
 ## License
 
-MIT
+[MIT](LICENSE)
