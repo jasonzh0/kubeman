@@ -254,6 +254,56 @@ def _extract_namespace_resource_name(yaml_file: Path) -> Optional[str]:
     return None
 
 
+def _filter_manifests_by_template_names(
+    yaml_files: List[Path], template_names: List[str], manifests_dir_path: Path
+) -> List[Path]:
+    """
+    Filter manifest files to only include those belonging to the specified templates.
+
+    Args:
+        yaml_files: List of YAML file paths
+        template_names: List of template names to filter by
+        manifests_dir_path: Base path to the manifests directory
+
+    Returns:
+        Filtered list of YAML files that belong to the specified templates
+    """
+    if not template_names:
+        return yaml_files
+
+    # Normalize paths for comparison
+    manifests_dir_path = manifests_dir_path.resolve()
+    template_name_set = set(template_names)
+
+    filtered_files: List[Path] = []
+    for yaml_file in yaml_files:
+        yaml_file_resolved = yaml_file.resolve()
+
+        # Check if file is in a template directory: manifests/{template_name}/*
+        relative_path = yaml_file_resolved.relative_to(manifests_dir_path)
+        path_parts = relative_path.parts
+
+        # Check if file is in a template subdirectory
+        if len(path_parts) >= 2:
+            # Path structure: {template_name}/filename.yaml
+            template_dir_name = path_parts[0]
+            if template_dir_name in template_name_set:
+                filtered_files.append(yaml_file)
+                continue
+
+        # Check if file is an ArgoCD application file: manifests/apps/{template_name}-application.yaml
+        if len(path_parts) >= 2 and path_parts[0] == "apps":
+            # Path structure: apps/{template_name}-application.yaml
+            app_filename = path_parts[1]
+            # Check if filename matches pattern: {template_name}-application.yaml
+            for template_name in template_name_set:
+                if app_filename == f"{template_name}-application.yaml":
+                    filtered_files.append(yaml_file)
+                    break
+
+    return filtered_files
+
+
 def _filter_manifests_by_namespace(
     yaml_files: List[Path], namespace_filter: Optional[str]
 ) -> List[Path]:
@@ -292,13 +342,16 @@ def _filter_manifests_by_namespace(
     return filtered_files
 
 
-def render_templates(manifests_dir: Optional[Path] = None) -> None:
+def render_templates(manifests_dir: Optional[Path] = None) -> List[str]:
     """
     Render all registered templates to the manifests directory.
 
     Args:
         manifests_dir: Optional custom directory for manifests output.
                       If None, uses default from Config.
+
+    Returns:
+        List of template names (strings) that were successfully rendered.
 
     Raises:
         ValueError: If no templates are registered
@@ -309,6 +362,8 @@ def render_templates(manifests_dir: Optional[Path] = None) -> None:
     if manifests_dir is not None:
         original_dir = Template.manifests_dir()  # Store original
         Template.set_manifests_dir(Path(manifests_dir).resolve())
+
+    rendered_template_names: List[str] = []
 
     try:
         templates = TemplateRegistry.get_registered_templates()
@@ -325,6 +380,8 @@ def render_templates(manifests_dir: Optional[Path] = None) -> None:
                 print(f"\nRendering template: {template_class.__name__}")
                 template = template_class()
                 template.render()
+                # Track the template name after successful rendering
+                rendered_template_names.append(template.name)
                 print(f"✓ Successfully rendered {template_class.__name__}")
             except Exception as e:
                 raise RuntimeError(
@@ -335,8 +392,14 @@ def render_templates(manifests_dir: Optional[Path] = None) -> None:
         if manifests_dir is not None:
             Template.set_manifests_dir(original_dir)
 
+    return rendered_template_names
 
-def apply_manifests(namespace: Optional[str] = None, manifests_dir: Optional[Path] = None) -> None:
+
+def apply_manifests(
+    namespace: Optional[str] = None,
+    manifests_dir: Optional[Path] = None,
+    template_names: Optional[List[str]] = None,
+) -> None:
     """
     Apply rendered manifests to Kubernetes cluster using kubectl.
 
@@ -344,6 +407,9 @@ def apply_manifests(namespace: Optional[str] = None, manifests_dir: Optional[Pat
         namespace: Optional namespace to filter or set context
         manifests_dir: Optional custom directory for manifests.
                       If None, uses default from Config.
+        template_names: Optional list of template names to filter by.
+                       If provided, only manifests from these templates will be applied.
+                       If None, all manifests in the directory will be applied (backward compatible).
 
     Raises:
         FileNotFoundError: If kubectl is not found
@@ -387,6 +453,15 @@ def apply_manifests(namespace: Optional[str] = None, manifests_dir: Optional[Pat
                 f"No YAML files found in {manifests_dir_path}. "
                 "Templates must be rendered before applying."
             )
+
+        # Filter manifests by template names if provided
+        if template_names is not None:
+            yaml_files = _filter_manifests_by_template_names(
+                yaml_files, template_names, manifests_dir_path
+            )
+            if not yaml_files:
+                print(f"\nNo manifests found for registered templates: {', '.join(template_names)}")
+                return
 
         # Filter manifests by namespace if provided
         if namespace:
@@ -517,12 +592,14 @@ def cmd_apply(args: argparse.Namespace) -> None:
                 # If output_dir is not a valid path (e.g., Mock object), ignore it
                 output_dir = None
 
-        # Render all registered templates
-        render_templates(manifests_dir=output_dir)
+        # Render all registered templates and get their names
+        template_names = render_templates(manifests_dir=output_dir)
         print("\n✓ Templates rendered successfully")
 
-        # Apply manifests to cluster
-        apply_manifests(namespace=args.namespace, manifests_dir=output_dir)
+        # Apply manifests to cluster (only from registered templates)
+        apply_manifests(
+            namespace=args.namespace, manifests_dir=output_dir, template_names=template_names
+        )
     except (FileNotFoundError, ImportError, ValueError, RuntimeError) as e:
         print(f"✗ Error: {e}", file=sys.stderr)
         sys.exit(1)

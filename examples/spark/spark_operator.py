@@ -64,11 +64,11 @@ class SparkOperator(HelmChart):
             "resources": {
                 "limits": {
                     "cpu": "500m",
-                    "memory": "512Mi",
+                    "memory": "1Gi",
                 },
                 "requests": {
                     "cpu": "100m",
-                    "memory": "128Mi",
+                    "memory": "256Mi",
                 },
             },
         }
