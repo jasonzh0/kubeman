@@ -4,19 +4,19 @@ Templates for Kafka deployment.
 This file imports template modules to trigger registration via @TemplateRegistry.register decorators.
 
 Usage:
-    # From the example/kafka directory:
+    # From the examples/kafka directory:
     kubeman render
     kubeman apply
 
     # Or with explicit path:
-    kubeman render --file example/kafka/templates.py
-    kubeman apply --file example/kafka/templates.py
+    kubeman render --file examples/kafka/templates.py
+    kubeman apply --file examples/kafka/templates.py
 """
 
 import sys
 from pathlib import Path
 
-# Add the example/kafka directory to the path so we can import the template modules
+# Add the examples/kafka directory to the path so we can import the template modules
 _kafka_dir = Path(__file__).parent
 if str(_kafka_dir) not in sys.path:
     sys.path.insert(0, str(_kafka_dir))

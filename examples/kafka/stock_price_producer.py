@@ -48,6 +48,7 @@ class StockPriceProducer(KubernetesResource):
                 {
                     "name": "producer",
                     "image": "stock-price-producer:latest",
+                    "imagePullPolicy": "Never",
                     "env": [
                         {
                             "name": "STOCK_SYMBOLS",

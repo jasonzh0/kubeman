@@ -1,38 +1,42 @@
 """
-Example Kafka deployment using kubeman with Bitnami Kafka Helm chart.
+Example Kafka deployment using kubeman with Strimzi Kafka Operator.
 
 This example demonstrates how to deploy Kafka to Kubernetes using kubeman.
-It uses the Bitnami Kafka Helm chart with custom configuration.
+It uses the Strimzi Kafka Operator from https://github.com/strimzi/strimzi-kafka-operator.
+
+The deployment consists of:
+1. Strimzi Cluster Operator (installed via Helm)
+2. Kafka cluster (created via Kafka CRD)
 
 Usage:
-    kubeman render --file example/kafka/templates.py
-    kubeman apply --file example/kafka/templates.py
-    # Or from example/kafka directory:
+    kubeman render --file examples/kafka/templates.py
+    kubeman apply --file examples/kafka/templates.py
+    # Or from examples/kafka directory:
     kubeman render
     kubeman apply
 """
 
-from kubeman import HelmChart, TemplateRegistry
+from kubeman import HelmChart, KubernetesResource, TemplateRegistry
 
 
 @TemplateRegistry.register
-class KafkaChart(HelmChart):
+class StrimziOperator(HelmChart):
     """
-    Kafka deployment using Bitnami Kafka Helm chart.
+    Strimzi Kafka Operator installation.
 
-    This chart deploys a Kafka cluster with Zookeeper for coordination.
+    This installs the Strimzi Cluster Operator which manages Kafka clusters via CRDs.
     """
 
     @property
     def name(self) -> str:
-        return "kafka"
+        return "strimzi-kafka-operator"
 
     @property
     def repository(self) -> dict:
-        """Bitnami Helm repository"""
+        """Strimzi Helm repository"""
         return {
             "type": "classic",
-            "remote": "https://charts.bitnami.com/bitnami",
+            "remote": "https://strimzi.io/charts/",
         }
 
     @property
@@ -41,94 +45,132 @@ class KafkaChart(HelmChart):
 
     @property
     def version(self) -> str:
-        """Kafka chart version"""
-        return "32.4.3"
+        """Strimzi operator chart version"""
+        return "0.49.0"
 
     def generate_values(self) -> dict:
-        """Generate Helm values for Kafka deployment"""
+        """Generate Helm values for Strimzi operator"""
         return {
-            # Image configuration - override to use Apache Kafka 4.1.0
-            "image": {
-                "registry": "docker.io",
-                "repository": "apache/kafka",
-                "tag": "4.1.0",
-                "pullPolicy": "IfNotPresent",
-            },
-            # Kafka configuration
-            "kafka": {
-                "replicaCount": 3,
-                "listeners": {
-                    "client": {
-                        "protocol": "PLAINTEXT",
-                        "servicePort": 9092,
-                    },
-                    "external": {
-                        "protocol": "PLAINTEXT",
-                        "type": "LoadBalancer",
-                        "servicePort": 9094,
-                    },
-                },
-                "persistence": {
-                    "enabled": True,
-                    "size": "20Gi",
-                    "storageClass": None,  # Use default storage class
-                },
-                "resources": {
-                    "requests": {
-                        "cpu": "500m",
-                        "memory": "1Gi",
-                    },
-                    "limits": {
-                        "cpu": "2000m",
-                        "memory": "2Gi",
-                    },
-                },
-                "heapOpts": "-Xmx1024m -Xms1024m",
-                "logRetentionHours": 168,  # 7 days
-                "logSegmentBytes": 1073741824,  # 1GB
-                "offsetsTopicReplicationFactor": 3,
-                "transactionStateLogReplicationFactor": 3,
-                "transactionStateLogMinIsr": 2,
-            },
-            # Zookeeper configuration (required for Kafka)
-            "zookeeper": {
-                "enabled": True,
-                "replicaCount": 3,
-                "persistence": {
-                    "enabled": True,
-                    "size": "10Gi",
-                    "storageClass": None,
-                },
-                "resources": {
-                    "requests": {
-                        "cpu": "250m",
-                        "memory": "512Mi",
-                    },
-                    "limits": {
-                        "cpu": "1000m",
-                        "memory": "1Gi",
-                    },
-                },
-            },
-            # Metrics configuration (optional)
-            "metrics": {
-                "kafka": {
-                    "enabled": True,
-                    "serviceMonitor": {
-                        "enabled": False,  # Set to True if using Prometheus Operator
-                    },
-                },
-                "zookeeper": {
-                    "enabled": True,
-                    "serviceMonitor": {
-                        "enabled": False,  # Set to True if using Prometheus Operator
-                    },
-                },
-            },
+            # Watch all namespaces by default
+            "watchAnyNamespace": True,
         }
 
     def enable_argocd(self) -> bool:
         """Enable ArgoCD Application generation (optional)"""
-        # Set to True if you want ArgoCD to manage this deployment
-        # Make sure ARGOCD_APP_REPO_URL environment variable is set
+        return False
+
+
+@TemplateRegistry.register
+class KafkaCluster(KubernetesResource):
+    """
+    Kafka cluster deployment using Strimzi Kafka CRD.
+
+    This creates a Kafka cluster managed by the Strimzi operator.
+    Supports Kafka 4.1.0 and uses KRaft mode (no Zookeeper).
+    """
+
+    @property
+    def namespace(self) -> str:
+        return "kafka"
+
+    def manifests(self) -> list[dict]:
+        """Generate Kafka cluster CRD manifest using KRaft mode"""
+        return [
+            # Kafka cluster (KRaft mode - no Zookeeper)
+            {
+                "apiVersion": "kafka.strimzi.io/v1beta2",
+                "kind": "Kafka",
+                "metadata": {
+                    "name": "my-cluster",
+                    "namespace": self.namespace,
+                },
+                "spec": {
+                    "kafka": {
+                        "version": "4.1.0",
+                        "listeners": [
+                            {
+                                "name": "plain",
+                                "port": 9092,
+                                "type": "internal",
+                                "tls": False,
+                            },
+                        ],
+                        "config": {
+                            "offsets.topic.replication.factor": 3,
+                            "transaction.state.log.replication.factor": 3,
+                            "transaction.state.log.min.isr": 2,
+                        },
+                    },
+                    "entityOperator": {
+                        "topicOperator": {},
+                        "userOperator": {},
+                    },
+                },
+            },
+            # KafkaNodePool for brokers
+            {
+                "apiVersion": "kafka.strimzi.io/v1beta2",
+                "kind": "KafkaNodePool",
+                "metadata": {
+                    "name": "brokers",
+                    "namespace": self.namespace,
+                    "labels": {
+                        "strimzi.io/cluster": "my-cluster",
+                    },
+                },
+                "spec": {
+                    "replicas": 3,
+                    "roles": ["broker"],
+                    "storage": {
+                        "type": "persistent-claim",
+                        "size": "20Gi",
+                        "deleteClaim": False,
+                    },
+                    "resources": {
+                        "requests": {
+                            "cpu": "500m",
+                            "memory": "1Gi",
+                        },
+                        "limits": {
+                            "cpu": "2000m",
+                            "memory": "2Gi",
+                        },
+                    },
+                },
+            },
+            # KafkaNodePool for controllers
+            {
+                "apiVersion": "kafka.strimzi.io/v1beta2",
+                "kind": "KafkaNodePool",
+                "metadata": {
+                    "name": "controllers",
+                    "namespace": self.namespace,
+                    "labels": {
+                        "strimzi.io/cluster": "my-cluster",
+                    },
+                },
+                "spec": {
+                    "replicas": 3,
+                    "roles": ["controller"],
+                    "storage": {
+                        "type": "persistent-claim",
+                        "size": "10Gi",
+                        "deleteClaim": False,
+                    },
+                    "resources": {
+                        "requests": {
+                            "cpu": "250m",
+                            "memory": "512Mi",
+                        },
+                        "limits": {
+                            "cpu": "1000m",
+                            "memory": "1Gi",
+                        },
+                    },
+                },
+            },
+        ]
+
+    def enable_argocd(self) -> bool:
+        """Enable ArgoCD Application generation (optional)"""
         return False

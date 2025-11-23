@@ -41,6 +41,7 @@ class StockPriceConsumer(KubernetesResource):
                 {
                     "name": "consumer",
                     "image": "stock-price-consumer:latest",
+                    "imagePullPolicy": "Never",
                     "env": [
                         {
                             "name": "KAFKA_BROKER",

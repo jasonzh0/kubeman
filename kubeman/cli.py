@@ -9,7 +9,8 @@ import argparse
 import importlib.util
 import sys
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Tuple, List
+import yaml
 
 from kubeman.register import TemplateRegistry
 from kubeman.template import Template
@@ -50,6 +51,59 @@ def load_templates_file(file_path: str) -> None:
         spec.loader.exec_module(module)
     except Exception as e:
         raise ImportError(f"Error importing templates file {file_path_obj}: {e}") from e
+
+
+def _contains_crd(yaml_file: Path) -> bool:
+    """
+    Check if a YAML file contains any CustomResourceDefinition resources.
+
+    Handles both single-document and multi-document YAML files.
+
+    Args:
+        yaml_file: Path to the YAML file to check
+
+    Returns:
+        True if the file contains at least one CRD, False otherwise
+    """
+    try:
+        with open(yaml_file, "r") as f:
+            # Handle multi-document YAML files
+            documents = list(yaml.safe_load_all(f))
+
+            for doc in documents:
+                if doc is None:
+                    continue
+                if isinstance(doc, dict) and doc.get("kind") == "CustomResourceDefinition":
+                    return True
+    except (yaml.YAMLError, IOError, OSError):
+        # If we can't parse the file, assume it's not a CRD
+        # This allows the apply to proceed and kubectl will handle the error
+        return False
+
+    return False
+
+
+def _categorize_yaml_files(yaml_files: List[Path]) -> Tuple[List[Path], List[Path]]:
+    """
+    Categorize YAML files into CRDs and non-CRDs.
+
+    Args:
+        yaml_files: List of YAML file paths to categorize
+
+    Returns:
+        Tuple of (crd_files, non_crd_files) - both lists are sorted
+    """
+    crd_files: List[Path] = []
+    non_crd_files: List[Path] = []
+
+    for yaml_file in yaml_files:
+        if _contains_crd(yaml_file):
+            crd_files.append(yaml_file)
+        else:
+            non_crd_files.append(yaml_file)
+
+    # Sort both lists for consistent ordering
+    return sorted(crd_files), sorted(non_crd_files)
 
 
 def render_templates(manifests_dir: Optional[Path] = None) -> None:
@@ -148,15 +202,23 @@ def apply_manifests(namespace: Optional[str] = None, manifests_dir: Optional[Pat
                 "Templates must be rendered before applying."
             )
 
+        # Categorize files into CRDs and non-CRDs
+        crd_files, non_crd_files = _categorize_yaml_files(yaml_files)
+
         print(f"\nApplying manifests from {manifests_dir_path}")
         if namespace:
             print(f"Using namespace: {namespace}")
         print(f"Found {len(yaml_files)} manifest file(s)")
+        if crd_files:
+            print(f"  - {len(crd_files)} CRD file(s) will be applied first")
+            print(f"  - {len(non_crd_files)} other resource file(s)")
 
-        # Apply each file individually to get better error messages
+        # Apply CRDs first, then other resources
         applied_count = 0
-        for yaml_file in sorted(yaml_files):
+        for yaml_file in crd_files + non_crd_files:
             cmd = ["kubectl", "apply", "-f", str(yaml_file)]
+            # Note: CRDs are cluster-scoped, so --namespace flag is ignored for them
+            # but we still pass it for consistency (kubectl will ignore it for cluster-scoped resources)
             if namespace:
                 cmd.extend(["--namespace", namespace])
 
@@ -239,9 +301,9 @@ def main() -> None:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  kubeman render --file example/kafka/templates.py
-  kubeman apply --file example/kafka/templates.py
-  # Or from example/kafka directory:
+  kubeman render --file examples/kafka/templates.py
+  kubeman apply --file examples/kafka/templates.py
+  # Or from examples/kafka directory:
   kubeman render
   kubeman apply
 

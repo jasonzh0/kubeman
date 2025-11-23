@@ -242,6 +242,159 @@ class TestApplyManifests:
             with pytest.raises(RuntimeError, match="kubectl apply failed"):
                 apply_manifests()
 
+    @patch("kubeman.cli.get_executor")
+    def test_crd_ordering(self, mock_get_executor, tmp_path, capsys):
+        """Test that CRDs are applied before other resources."""
+        mock_executor = MagicMock()
+        mock_executor.run.return_value = MagicMock(returncode=0)
+        mock_get_executor.return_value = mock_executor
+
+        # Create test YAML files
+        crd_file = tmp_path / "crd.yaml"
+        crd_file.write_text(
+            """apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: kafkas.kafka.strimzi.io
+"""
+        )
+
+        resource_file = tmp_path / "resource.yaml"
+        resource_file.write_text(
+            """apiVersion: kafka.strimzi.io/v1beta2
+kind: Kafka
+metadata:
+  name: my-cluster
+"""
+        )
+
+        with patch("kubeman.cli.Template.manifests_dir") as mock_dir:
+            mock_path = MagicMock()
+            mock_path.exists.return_value = True
+            mock_path.__str__ = lambda x: str(tmp_path)
+            # rglob is called twice: once for *.yaml, once for *.yml
+            # Return files on first call, empty list on second call
+            mock_path.rglob.side_effect = [[resource_file, crd_file], []]
+            mock_dir.return_value = mock_path
+
+            apply_manifests()
+
+        # Verify CRD was applied first, then resource
+        apply_calls = [
+            c
+            for c in mock_executor.run.call_args_list
+            if len(c[0]) > 0
+            and isinstance(c[0][0], list)
+            and len(c[0][0]) > 1
+            and c[0][0][1] == "apply"
+        ]
+        assert len(apply_calls) == 2
+
+        # First apply should be CRD
+        first_apply = apply_calls[0][0][0]
+        assert str(crd_file) in first_apply or "crd.yaml" in str(first_apply)
+
+        # Second apply should be resource
+        second_apply = apply_calls[1][0][0]
+        assert str(resource_file) in second_apply or "resource.yaml" in str(second_apply)
+
+        output = capsys.readouterr()
+        assert "CRD file(s) will be applied first" in output.out
+        assert "1 CRD file(s)" in output.out
+        assert "1 other resource file(s)" in output.out
+
+    @patch("kubeman.cli.get_executor")
+    def test_multi_document_yaml_with_crd(self, mock_get_executor, tmp_path):
+        """Test handling of multi-document YAML files containing CRDs."""
+        mock_executor = MagicMock()
+        mock_executor.run.return_value = MagicMock(returncode=0)
+        mock_get_executor.return_value = mock_executor
+
+        # Create a multi-document YAML file with CRD
+        multi_doc_file = tmp_path / "multi.yaml"
+        multi_doc_file.write_text(
+            """---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: kafkas.kafka.strimzi.io
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: test-config
+"""
+        )
+
+        regular_file = tmp_path / "regular.yaml"
+        regular_file.write_text(
+            """apiVersion: v1
+kind: Service
+metadata:
+  name: test-service
+"""
+        )
+
+        with patch("kubeman.cli.Template.manifests_dir") as mock_dir:
+            mock_path = MagicMock()
+            mock_path.exists.return_value = True
+            mock_path.__str__ = lambda x: str(tmp_path)
+            # rglob is called twice: once for *.yaml, once for *.yml
+            # Return files on first call, empty list on second call
+            mock_path.rglob.side_effect = [[regular_file, multi_doc_file], []]
+            mock_dir.return_value = mock_path
+
+            apply_manifests()
+
+        # Verify multi-doc file with CRD was applied first
+        apply_calls = [
+            c
+            for c in mock_executor.run.call_args_list
+            if len(c[0]) > 0
+            and isinstance(c[0][0], list)
+            and len(c[0][0]) > 1
+            and c[0][0][1] == "apply"
+        ]
+        assert len(apply_calls) == 2
+
+        # First apply should be the multi-doc file (contains CRD)
+        first_apply = apply_calls[0][0][0]
+        assert str(multi_doc_file) in first_apply or "multi.yaml" in str(first_apply)
+
+        # Second apply should be regular file
+        second_apply = apply_calls[1][0][0]
+        assert str(regular_file) in second_apply or "regular.yaml" in str(second_apply)
+
+    @patch("kubeman.cli.get_executor")
+    def test_no_crds_in_output(self, mock_get_executor, tmp_path, capsys):
+        """Test that output doesn't mention CRDs when there are none."""
+        mock_executor = MagicMock()
+        mock_executor.run.return_value = MagicMock(returncode=0)
+        mock_get_executor.return_value = mock_executor
+
+        # Create test YAML files without CRDs
+        resource_file = tmp_path / "resource.yaml"
+        resource_file.write_text(
+            """apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: test-config
+"""
+        )
+
+        with patch("kubeman.cli.Template.manifests_dir") as mock_dir:
+            mock_path = MagicMock()
+            mock_path.exists.return_value = True
+            mock_path.__str__ = lambda x: str(tmp_path)
+            mock_path.rglob.return_value = [resource_file]
+            mock_dir.return_value = mock_path
+
+            apply_manifests()
+
+        output = capsys.readouterr()
+        # Should not mention CRD count when there are no CRDs
+        assert "CRD file(s) will be applied first" not in output.out
+
 
 class TestCmdRender:
     """Test cases for cmd_render function."""
