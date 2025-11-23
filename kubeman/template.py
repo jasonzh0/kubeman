@@ -1,7 +1,12 @@
 from abc import ABC, abstractmethod
-import os
+from pathlib import Path
+from typing import Optional
 import yaml
-from kubeman.git import GitManager
+from kubeman.config import Config
+from kubeman.argocd import ArgoCDApplicationGenerator
+
+# Context variable for custom manifests directory (set by CLI)
+_custom_manifests_dir: Optional[Path] = None
 
 
 class Template(ABC):
@@ -27,9 +32,32 @@ class Template(ABC):
         pass
 
     @staticmethod
-    def manifests_dir() -> str:
-        """Return the base directory for manifests"""
-        return os.path.abspath(os.path.join(os.path.dirname(__file__), "../../manifests"))
+    def manifests_dir() -> Path:
+        """
+        Return the base directory for manifests.
+
+        Uses custom manifests directory if set (via set_manifests_dir()),
+        otherwise uses Config.manifests_dir() which checks MANIFESTS_DIR environment
+        variable or defaults to 'manifests' in the current working directory.
+
+        Returns:
+            Path to manifests directory
+        """
+        global _custom_manifests_dir
+        if _custom_manifests_dir is not None:
+            return _custom_manifests_dir
+        return Config.manifests_dir()
+
+    @staticmethod
+    def set_manifests_dir(path: Optional[Path]) -> None:
+        """
+        Set a custom manifests directory for this execution.
+
+        Args:
+            path: Path to manifests directory, or None to use default
+        """
+        global _custom_manifests_dir
+        _custom_manifests_dir = path
 
     def enable_argocd(self) -> bool:
         """Return whether ArgoCD Application generation is enabled. Defaults to False (opt-in)."""
@@ -41,11 +69,15 @@ class Template(ABC):
 
     def application_repo_url(self) -> str:
         """Return the repository URL for ArgoCD applications. Override to customize."""
-        return os.getenv("ARGOCD_APP_REPO_URL", "")
+        return Config.argocd_app_repo_url()
 
     def application_target_revision(self) -> str:
         """Return the target revision for ArgoCD applications. Override to customize."""
-        return GitManager().fetch_branch_name()
+        try:
+            return Config.git_branch()
+        except ValueError:
+            # Fallback to "main" if git branch is not available
+            return "main"
 
     def managed_namespace_metadata(self) -> dict:
         """Return managed namespace metadata labels. Override to customize."""
@@ -53,52 +85,30 @@ class Template(ABC):
 
     def apps_subdirectory(self) -> str:
         """Return the subdirectory name for applications. Override to customize."""
-        return os.getenv("ARGOCD_APPS_SUBDIR", "apps")
+        return Config.argocd_apps_subdir()
 
     def generate_application(self) -> dict | None:
-        """Generate the ArgoCD Application manifest for this template. Returns None if ArgoCD is disabled."""
+        """
+        Generate the ArgoCD Application manifest for this template.
+
+        Uses ArgoCDApplicationGenerator for cleaner separation of concerns.
+        Returns None if ArgoCD is disabled or no repo URL is configured.
+
+        Returns:
+            ArgoCD Application manifest dict or None
+        """
         if not self.enable_argocd():
             return None
 
-        repo_url = self.application_repo_url()
-        if not repo_url:
-            return None
-
-        app = {
-            "apiVersion": "argoproj.io/v1alpha1",
-            "kind": "Application",
-            "metadata": {
-                "name": self.name,
-                "namespace": "argocd",  # ArgoCD applications always live in argocd namespace
-            },
-            "spec": {
-                "project": "default",
-                "source": {
-                    "repoURL": repo_url,
-                    "targetRevision": self.application_target_revision(),
-                    "path": f"{self.name}",
-                },
-                "destination": {
-                    "server": "https://kubernetes.default.svc",
-                    "namespace": self.namespace,
-                },
-                "syncPolicy": {
-                    "automated": {
-                        "prune": True,
-                        "selfHeal": True,
-                    },
-                    "syncOptions": ["CreateNamespace=true", "ServerSideApply=true"],
-                },
-                "ignoreDifferences": self.argo_ignore_spec(),
-            },
-        }
-
-        # Add managed namespace metadata if provided
-        managed_metadata = self.managed_namespace_metadata()
-        if managed_metadata:
-            app["spec"]["syncPolicy"]["managedNamespaceMetadata"] = {"labels": managed_metadata}
-
-        return app
+        generator = ArgoCDApplicationGenerator(self.name, self.namespace)
+        return generator.generate(
+            repo_url=self.application_repo_url() or None,
+            target_revision=self.application_target_revision(),
+            path=self.name,
+            ignore_differences=self.argo_ignore_spec() or None,
+            managed_namespace_metadata=self.managed_namespace_metadata() or None,
+            apps_subdir=self.apps_subdirectory(),
+        )
 
     @abstractmethod
     def render(self) -> None:
@@ -118,9 +128,12 @@ class Template(ABC):
         if app is None:
             return
 
-        apps_dir = os.path.join(self.manifests_dir(), self.apps_subdirectory())
-        os.makedirs(apps_dir, exist_ok=True)
+        manifests_dir = self.manifests_dir()
+        if isinstance(manifests_dir, str):
+            manifests_dir = Path(manifests_dir)
+        apps_dir = manifests_dir / self.apps_subdirectory()
+        apps_dir.mkdir(parents=True, exist_ok=True)
 
-        app_file = os.path.join(apps_dir, f"{self.name}-application.yaml")
+        app_file = apps_dir / f"{self.name}-application.yaml"
         with open(app_file, "w") as f:
             yaml.dump(app, f)

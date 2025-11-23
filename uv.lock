@@ -272,7 +272,7 @@ wheels = [
 
 [[package]]
 name = "kubeman"
-version = "0.3.0"
+version = "0.4.0"
 source = { editable = "." }
 dependencies = [
     { name = "pyyaml" },
@@ -291,6 +291,11 @@ dev = [
     { name = "ruff" },
 ]
 
+[package.dev-dependencies]
+dev = [
+    { name = "kubeman" },
+]
+
 [package.metadata]
 requires-dist = [
     { name = "black", marker = "extra == 'dev'", specifier = ">=23.0" },
@@ -300,6 +305,9 @@ requires-dist = [
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.1.0" },
 ]
 provides-extras = ["dev"]
+
+[package.metadata.requires-dev]
+dev = [{ name = "kubeman", editable = "." }]
 
 [[package]]
 name = "mypy-extensions"

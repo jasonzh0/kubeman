@@ -1,4 +1,4 @@
-import os
+from pathlib import Path
 import yaml
 from typing import Any, Optional
 from kubeman.template import Template
@@ -470,8 +470,11 @@ class KubernetesResource(Template):
             return
 
         print(f"\nRendering {len(manifests)} manifests for {self.name}...")
-        output_dir = os.path.join(self.manifests_dir(), self.name)
-        os.makedirs(output_dir, exist_ok=True)
+        manifests_dir = self.manifests_dir()
+        if isinstance(manifests_dir, str):
+            manifests_dir = Path(manifests_dir)
+        output_dir = manifests_dir / self.name
+        output_dir.mkdir(parents=True, exist_ok=True)
 
         for manifest in manifests:
             if not manifest.get("metadata") or not manifest["metadata"].get("name"):
@@ -482,14 +485,14 @@ class KubernetesResource(Template):
 
             manifest_name = manifest["metadata"]["name"]
             manifest_kind = manifest["kind"].lower()
-            output_file = os.path.join(output_dir, f"{manifest_name}-{manifest_kind}.yaml")
+            output_file = output_dir / f"{manifest_name}-{manifest_kind}.yaml"
 
-            if os.path.exists(output_file):
-                raise ValueError(
-                    f"Skipping {manifest_name}-{manifest_kind} because it already exists"
+            if output_file.exists():
+                print(
+                    f"Overwriting existing manifest {manifest_name} ({manifest_kind}) at {output_file}"
                 )
-
-            print(f"Writing manifest {manifest_name} ({manifest_kind}) to {output_file}")
+            else:
+                print(f"Writing manifest {manifest_name} ({manifest_kind}) to {output_file}")
 
             with open(output_file, "w") as f:
                 yaml.dump(manifest, f)

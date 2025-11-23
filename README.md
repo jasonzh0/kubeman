@@ -23,7 +23,7 @@ Using `uv` (recommended):
 uv pip install -e .
 ```
 
-Or using `pip`:
+Or using `pip` (not recommended):
 
 ```bash
 pip install -e .
@@ -494,14 +494,14 @@ The `push_manifests()` method will:
 
 ### Docker Operations
 
-The `DockerManager` class helps build and push Docker images to Google Container Registry:
+The `DockerManager` class helps build and push Docker images to container registries:
 
 ```python
 from kubeman import DockerManager
 
-# Initialize with project ID (or set GOOGLE_PROJECT_ID env var)
+# Initialize with project ID (or set DOCKER_PROJECT_ID env var)
 docker = DockerManager(
-    project_id="my-gcp-project",
+    project_id="my-project",
     repository_name="my-repo"  # Optional, defaults to "default"
 )
 
@@ -543,8 +543,8 @@ You can also enable ArgoCD by overriding the `enable_argocd()` method in your te
 
 ### Required for Docker Operations
 
-- `GOOGLE_PROJECT_ID` - Google Cloud project ID (or pass to `DockerManager` constructor)
-- `GOOGLE_REGION` - GCP region (defaults to "us-central1")
+- `DOCKER_PROJECT_ID` - Registry project ID (or pass to `DockerManager` constructor)
+- `DOCKER_REGION` - Registry region (defaults to "us-central1")
 - `DOCKER_REPOSITORY_NAME` - Docker repository name (defaults to "default")
 - `GITHUB_REPOSITORY` - GitHub repository name (optional)
 

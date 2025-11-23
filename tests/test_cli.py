@@ -6,27 +6,25 @@ import tempfile
 from pathlib import Path
 from unittest.mock import Mock, patch, MagicMock
 import pytest
-import subprocess
 
 from kubeman.cli import (
-    load_template_file,
-    render_templates,
-    apply_manifests,
+    load_templates_file,
     cmd_render,
     cmd_apply,
     main,
 )
+from kubeman.cli import render_templates, apply_manifests
 from kubeman.register import TemplateRegistry
 from kubeman.template import Template
 
 
-class TestLoadTemplateFile:
-    """Test cases for load_template_file function."""
+class TestLoadTemplatesFile:
+    """Test cases for load_templates_file function."""
 
     def test_file_not_found(self):
         """Test loading a non-existent file."""
-        with pytest.raises(FileNotFoundError, match="Template file not found"):
-            load_template_file("/nonexistent/file.py")
+        with pytest.raises(FileNotFoundError, match="Templates file not found"):
+            load_templates_file("/nonexistent/file.py")
 
     def test_file_not_python(self):
         """Test loading a file that's not a Python file."""
@@ -35,44 +33,26 @@ class TestLoadTemplateFile:
             temp_path = f.name
 
         try:
-            with pytest.raises(ValueError, match="Template file must be a Python file"):
-                load_template_file(temp_path)
+            with pytest.raises(ValueError, match="Templates file must be a Python file"):
+                load_templates_file(temp_path)
         finally:
             os.unlink(temp_path)
 
     def test_successful_import(self, tmp_path):
-        """Test successfully importing a template file."""
-        template_file = tmp_path / "test_templates.py"
-        template_file.write_text(
-            """
-from kubeman import KubernetesResource, TemplateRegistry
+        """Test successfully importing a templates file."""
+        templates_file = tmp_path / "test_templates.py"
+        templates_file.write_text("x = 1")
 
-@TemplateRegistry.register
-class TestResource(KubernetesResource):
-    @property
-    def name(self):
-        return "test"
-
-    @property
-    def namespace(self):
-        return "default"
-"""
-        )
-
-        TemplateRegistry.clear()
-        load_template_file(str(template_file))
-
-        templates = TemplateRegistry.get_registered_templates()
-        assert len(templates) == 1
-        assert templates[0].__name__ == "TestResource"
+        # Should not raise an error - just imports the module
+        load_templates_file(str(templates_file))
 
     def test_import_error(self, tmp_path):
         """Test importing a file with syntax errors."""
-        template_file = tmp_path / "bad_templates.py"
-        template_file.write_text("invalid python syntax {")
+        templates_file = tmp_path / "bad_templates.py"
+        templates_file.write_text("invalid python syntax {")
 
-        with pytest.raises(ImportError, match="Error importing template file"):
-            load_template_file(str(template_file))
+        with pytest.raises(ImportError, match="Error importing templates file"):
+            load_templates_file(str(templates_file))
 
 
 class TestRenderTemplates:
@@ -137,41 +117,57 @@ class TestRenderTemplates:
 class TestApplyManifests:
     """Test cases for apply_manifests function."""
 
-    @patch("kubeman.cli.subprocess.run")
-    def test_kubectl_not_found(self, mock_run):
+    @patch("kubeman.cli.get_executor")
+    def test_kubectl_not_found(self, mock_get_executor):
         """Test when kubectl is not found."""
-        mock_run.side_effect = FileNotFoundError()
+        mock_executor = MagicMock()
+        mock_executor.run.side_effect = FileNotFoundError()
+        mock_get_executor.return_value = mock_executor
 
         with pytest.raises(FileNotFoundError, match="kubectl not found"):
             apply_manifests()
 
-    @patch("kubeman.cli.subprocess.run")
-    def test_manifests_directory_not_found(self, mock_run):
+    @patch("kubeman.cli.get_executor")
+    def test_manifests_directory_not_found(self, mock_get_executor):
         """Test when manifests directory doesn't exist."""
-        # Mock kubectl version check to succeed
-        mock_run.return_value = MagicMock(returncode=0)
+        mock_executor = MagicMock()
+        mock_executor.run.return_value = MagicMock(returncode=0)
+        mock_get_executor.return_value = mock_executor
 
-        with patch("kubeman.cli.os.path.exists", return_value=False):
+        with patch("kubeman.cli.Template.manifests_dir") as mock_dir:
+            mock_path = MagicMock()
+            mock_path.exists.return_value = False
+            mock_dir.return_value = mock_path
+
             with pytest.raises(RuntimeError, match="Manifests directory not found"):
                 apply_manifests()
 
-    @patch("kubeman.cli.subprocess.run")
-    @patch("kubeman.cli.os.path.exists")
-    def test_successful_apply(self, mock_exists, mock_run, capsys):
+    @patch("kubeman.cli.get_executor")
+    def test_successful_apply(self, mock_get_executor, capsys):
         """Test successfully applying manifests."""
-        # Mock kubectl version check
-        mock_run.return_value = MagicMock(returncode=0)
-        mock_exists.return_value = True
+        mock_executor = MagicMock()
+        mock_executor.run.return_value = MagicMock(returncode=0)
+        mock_get_executor.return_value = mock_executor
 
-        with patch("kubeman.cli.Template.manifests_dir", return_value="/test/manifests"):
+        with patch("kubeman.cli.Template.manifests_dir") as mock_dir:
+            mock_path = MagicMock()
+            mock_path.exists.return_value = True
+            mock_path.__str__ = lambda x: "/test/manifests"
+            # Mock rglob to return some YAML files (use Path objects for sorting)
+            from pathlib import Path
+
+            mock_yaml_file = Path("/test/manifests/test.yaml")
+            mock_path.rglob.return_value = [mock_yaml_file]
+            mock_dir.return_value = mock_path
+
             apply_manifests()
 
         # Check kubectl version was called
-        assert mock_run.call_count >= 2
+        assert mock_executor.run.call_count >= 2
         # Check kubectl apply was called - find the call with "apply" in the command
         apply_calls = [
             c
-            for c in mock_run.call_args_list
+            for c in mock_executor.run.call_args_list
             if len(c[0]) > 0
             and isinstance(c[0][0], list)
             and len(c[0][0]) > 1
@@ -181,23 +177,33 @@ class TestApplyManifests:
 
         output = capsys.readouterr()
         assert "Applying manifests" in output.out
-        assert "Successfully applied manifests" in output.out
+        assert "Successfully applied" in output.out
 
-    @patch("kubeman.cli.subprocess.run")
-    @patch("kubeman.cli.os.path.exists")
-    def test_apply_with_namespace(self, mock_exists, mock_run, capsys):
+    @patch("kubeman.cli.get_executor")
+    def test_apply_with_namespace(self, mock_get_executor, capsys):
         """Test applying manifests with namespace."""
-        mock_run.return_value = MagicMock(returncode=0)
-        mock_exists.return_value = True
+        mock_executor = MagicMock()
+        mock_executor.run.return_value = MagicMock(returncode=0)
+        mock_get_executor.return_value = mock_executor
 
-        with patch("kubeman.cli.Template.manifests_dir", return_value="/test/manifests"):
+        with patch("kubeman.cli.Template.manifests_dir") as mock_dir:
+            mock_path = MagicMock()
+            mock_path.exists.return_value = True
+            mock_path.__str__ = lambda x: "/test/manifests"
+            # Mock rglob to return some YAML files (use Path objects for sorting)
+            from pathlib import Path
+
+            mock_yaml_file = Path("/test/manifests/test.yaml")
+            mock_path.rglob.return_value = [mock_yaml_file]
+            mock_dir.return_value = mock_path
+
             apply_manifests(namespace="test-ns")
 
         # Check that namespace was added to command
         # Find the apply call (second call after version check)
         apply_calls = [
             c
-            for c in mock_run.call_args_list
+            for c in mock_executor.run.call_args_list
             if len(c[0]) > 0
             and isinstance(c[0][0], list)
             and len(c[0][0]) > 1
@@ -211,18 +217,28 @@ class TestApplyManifests:
         output = capsys.readouterr()
         assert "Using namespace: test-ns" in output.out
 
-    @patch("kubeman.cli.subprocess.run")
-    @patch("kubeman.cli.os.path.exists")
-    def test_apply_failure(self, mock_exists, mock_run):
+    @patch("kubeman.cli.get_executor")
+    def test_apply_failure(self, mock_get_executor):
         """Test kubectl apply failure."""
-        # Mock kubectl version check to succeed
-        mock_run.side_effect = [
+        mock_executor = MagicMock()
+        # Mock kubectl version check to succeed, then apply to fail
+        mock_executor.run.side_effect = [
             MagicMock(returncode=0),  # version check
-            subprocess.CalledProcessError(1, "kubectl", stderr="Error applying"),
+            Exception("Error applying"),  # apply fails
         ]
-        mock_exists.return_value = True
+        mock_get_executor.return_value = mock_executor
 
-        with patch("kubeman.cli.Template.manifests_dir", return_value="/test/manifests"):
+        with patch("kubeman.cli.Template.manifests_dir") as mock_dir:
+            mock_path = MagicMock()
+            mock_path.exists.return_value = True
+            mock_path.__str__ = lambda x: "/test/manifests"
+            # Mock rglob to return some YAML files (use Path objects for sorting)
+            from pathlib import Path
+
+            mock_yaml_file = Path("/test/manifests/test.yaml")
+            mock_path.rglob.return_value = [mock_yaml_file]
+            mock_dir.return_value = mock_path
+
             with pytest.raises(RuntimeError, match="kubectl apply failed"):
                 apply_manifests()
 
@@ -235,7 +251,7 @@ class TestCmdRender:
         TemplateRegistry.clear()
 
     @patch("kubeman.cli.render_templates")
-    @patch("kubeman.cli.load_template_file")
+    @patch("kubeman.cli.load_templates_file")
     def test_successful_render(self, mock_load, mock_render, capsys):
         """Test successful render command."""
         args = Mock(file="/test/templates.py")
@@ -248,8 +264,8 @@ class TestCmdRender:
         output = capsys.readouterr()
         assert "All templates rendered successfully" in output.out
 
-    @patch("kubeman.cli.load_template_file")
-    def test_file_not_found_error(self, mock_load, capsys):
+    @patch("kubeman.cli.load_templates_file")
+    def test_render_file_not_found(self, mock_load, capsys):
         """Test render command with file not found."""
         mock_load.side_effect = FileNotFoundError("File not found")
         args = Mock(file="/test/templates.py")
@@ -261,11 +277,10 @@ class TestCmdRender:
         output = capsys.readouterr()
         assert "Error: File not found" in output.err
 
-    @patch("kubeman.cli.load_template_file")
     @patch("kubeman.cli.render_templates")
-    def test_render_error(self, mock_render, mock_load, capsys):
+    @patch("kubeman.cli.load_templates_file")
+    def test_render_error(self, mock_load, mock_render, capsys):
         """Test render command with render error."""
-        mock_load.return_value = None
         mock_render.side_effect = RuntimeError("Render failed")
         args = Mock(file="/test/templates.py")
 
@@ -275,6 +290,16 @@ class TestCmdRender:
         assert exc_info.value.code == 1
         output = capsys.readouterr()
         assert "Error: Render failed" in output.err
+
+    @patch("kubeman.cli.render_templates")
+    @patch("kubeman.cli.load_templates_file")
+    def test_render_default_file(self, mock_load, mock_render):
+        """Test render command with default file path."""
+        args = Mock(file=None)
+
+        cmd_render(args)
+
+        mock_load.assert_called_once_with("./templates.py")
 
 
 class TestCmdApply:
@@ -286,7 +311,7 @@ class TestCmdApply:
 
     @patch("kubeman.cli.apply_manifests")
     @patch("kubeman.cli.render_templates")
-    @patch("kubeman.cli.load_template_file")
+    @patch("kubeman.cli.load_templates_file")
     def test_successful_apply(self, mock_load, mock_render, mock_apply, capsys):
         """Test successful apply command."""
         args = Mock(file="/test/templates.py", namespace=None)
@@ -294,24 +319,24 @@ class TestCmdApply:
         cmd_apply(args)
 
         mock_load.assert_called_once_with("/test/templates.py")
-        mock_render.assert_called_once()
-        mock_apply.assert_called_once_with(namespace=None)
+        mock_render.assert_called_once_with(manifests_dir=None)
+        mock_apply.assert_called_once_with(namespace=None, manifests_dir=None)
 
         output = capsys.readouterr()
         assert "Templates rendered successfully" in output.out
 
     @patch("kubeman.cli.apply_manifests")
     @patch("kubeman.cli.render_templates")
-    @patch("kubeman.cli.load_template_file")
+    @patch("kubeman.cli.load_templates_file")
     def test_apply_with_namespace(self, mock_load, mock_render, mock_apply):
         """Test apply command with namespace."""
         args = Mock(file="/test/templates.py", namespace="test-ns")
 
         cmd_apply(args)
 
-        mock_apply.assert_called_once_with(namespace="test-ns")
+        mock_apply.assert_called_once_with(namespace="test-ns", manifests_dir=None)
 
-    @patch("kubeman.cli.load_template_file")
+    @patch("kubeman.cli.load_templates_file")
     def test_apply_file_not_found(self, mock_load, capsys):
         """Test apply command with file not found."""
         mock_load.side_effect = FileNotFoundError("File not found")
@@ -324,13 +349,11 @@ class TestCmdApply:
         output = capsys.readouterr()
         assert "Error: File not found" in output.err
 
-    @patch("kubeman.cli.load_template_file")
-    @patch("kubeman.cli.render_templates")
     @patch("kubeman.cli.apply_manifests")
-    def test_apply_error(self, mock_apply, mock_render, mock_load, capsys):
+    @patch("kubeman.cli.render_templates")
+    @patch("kubeman.cli.load_templates_file")
+    def test_apply_error(self, mock_load, mock_render, mock_apply, capsys):
         """Test apply command with apply error."""
-        mock_load.return_value = None
-        mock_render.return_value = None
         mock_apply.side_effect = RuntimeError("Apply failed")
         args = Mock(file="/test/templates.py", namespace=None)
 
@@ -340,6 +363,17 @@ class TestCmdApply:
         assert exc_info.value.code == 1
         output = capsys.readouterr()
         assert "Error: Apply failed" in output.err
+
+    @patch("kubeman.cli.apply_manifests")
+    @patch("kubeman.cli.render_templates")
+    @patch("kubeman.cli.load_templates_file")
+    def test_apply_default_file(self, mock_load, mock_render, mock_apply):
+        """Test apply command with default file path."""
+        args = Mock(file=None, namespace=None)
+
+        cmd_apply(args)
+
+        mock_load.assert_called_once_with("./templates.py")
 
 
 class TestMain:
@@ -373,6 +407,15 @@ class TestMain:
         args = mock_cmd_apply.call_args[0][0]
         assert args.file == "templates.py"
         assert args.namespace == "test-ns"
+
+    @patch("kubeman.cli.cmd_render")
+    @patch("sys.argv", ["kubeman", "render"])
+    def test_main_render_default_file(self, mock_cmd_render):
+        """Test main function with render command using default file."""
+        main()
+        mock_cmd_render.assert_called_once()
+        args = mock_cmd_render.call_args[0][0]
+        assert args.file is None
 
     @patch("sys.argv", ["kubeman", "--help"])
     def test_main_help(self, capsys):

@@ -6,7 +6,7 @@ test:
 
 # Build the package
 build:
-	python -m build
+	uv build
 
 # Bump patch version (0.2.2 -> 0.2.3)
 bump-patch:

@@ -1,41 +1,25 @@
-import subprocess
-import os
 import tempfile
 import shutil
-import tarfile
 from pathlib import Path
-import sys
+from kubeman.config import Config
+from kubeman.executor import CommandExecutor, get_executor
 
 
 class GitManager:
     """
-    A singleton class to interact with Git and fetch the current commit hash and branch name.
+    Manager for Git operations related to manifest repository management.
+
+    Provides methods to push rendered manifests to a Git repository.
     """
 
-    _instance = None
-    _commit_hash = None
-    _branch_name = None
+    def __init__(self, executor: CommandExecutor = None):
+        """
+        Initialize the GitManager.
 
-    def __new__(cls):
+        Args:
+            executor: CommandExecutor instance (defaults to global executor)
         """
-        Create a new instance of the GitManager class if one does not already exist.
-        Ensures that only one instance of GitManager is created (singleton pattern).
-        """
-        if cls._instance is None:
-            cls._instance = super(GitManager, cls).__new__(cls)
-        return cls._instance
-
-    def read_from_env(self, var_name: str) -> str:
-        """
-        Helper to read an environment variable or exit with error if unset.
-        """
-        if var_name in os.environ:
-            value = os.environ[var_name]
-            print(f"Got {var_name} from environment: {value}")
-            return value
-        else:
-            print(f"Failed to find {var_name} in environment variables")
-            sys.exit(1)
+        self.executor = executor or get_executor()
 
     def fetch_commit_hash(self) -> str:
         """
@@ -43,10 +27,11 @@ class GitManager:
 
         Returns:
             str: The current commit hash.
+
+        Raises:
+            ValueError: If STABLE_GIT_COMMIT is not set
         """
-        if self._commit_hash is None:
-            self._commit_hash = self.read_from_env("STABLE_GIT_COMMIT")
-        return self._commit_hash
+        return Config.git_commit()
 
     def fetch_branch_name(self) -> str:
         """
@@ -54,19 +39,23 @@ class GitManager:
 
         Returns:
             str: The current branch name.
-        """
-        if self._branch_name is None:
-            self._branch_name = self.read_from_env("STABLE_GIT_BRANCH")
-        return self._branch_name
 
-    def fetch_manifest_dir(self) -> str:
+        Raises:
+            ValueError: If STABLE_GIT_BRANCH is not set
+        """
+        return Config.git_branch()
+
+    def fetch_manifest_dir(self) -> Path:
         """
         Fetch the rendered manifest directory from environment variable.
 
         Returns:
-            str: The path to the rendered manifest directory.
+            Path: The path to the rendered manifest directory.
+
+        Raises:
+            ValueError: If RENDERED_MANIFEST_DIR is not set
         """
-        return self.read_from_env("RENDERED_MANIFEST_DIR")
+        return Path(Config.rendered_manifest_dir())
 
     def push_manifests(self, repo_url: str = None) -> None:
         """
@@ -76,9 +65,12 @@ class GitManager:
         Args:
             repo_url: The Git repository URL to push manifests to.
                      If not provided, reads from MANIFEST_REPO_URL environment variable.
+
+        Raises:
+            ValueError: If repo_url is not provided and MANIFEST_REPO_URL is not set
         """
         if not repo_url:
-            repo_url = os.getenv("MANIFEST_REPO_URL")
+            repo_url = Config.manifest_repo_url()
             if not repo_url:
                 raise ValueError(
                     "repo_url must be provided or MANIFEST_REPO_URL environment variable must be set"
@@ -88,62 +80,61 @@ class GitManager:
         manifests_dir = self.fetch_manifest_dir()
         # Use a context manager to ensure the temporary directory is cleaned up
         with tempfile.TemporaryDirectory(prefix="repo_clone_") as repo_temp_dir:
+            repo_temp_path = Path(repo_temp_dir)
+
             # Clone the manifests repository
-            subprocess.run(["git", "clone", repo_url, repo_temp_dir], check=True)
+            self.executor.run(["git", "clone", repo_url, str(repo_temp_path)], check=True)
 
             # Get the current branch name
             branch_name = self.fetch_branch_name()
 
             # Check if branch exists on the remote repository
-            check_remote_branch = subprocess.run(
+            check_result = self.executor.run_silent(
                 ["git", "ls-remote", "--heads", "origin", branch_name],
-                cwd=repo_temp_dir,
-                check=True,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
+                cwd=repo_temp_path,
             )
-            branch_exists = bool(check_remote_branch.stdout.strip())
+            branch_exists = bool(check_result.stdout.strip())
             print(f"Checking if branch '{branch_name}' exists on remote: {branch_exists}")
 
             # Fetch only the branch we need
             if branch_exists:
                 # Fetch only the existing branch
-                subprocess.run(
-                    ["git", "fetch", "origin", branch_name], cwd=repo_temp_dir, check=True
+                self.executor.run(
+                    ["git", "fetch", "origin", branch_name], cwd=repo_temp_path, check=True
                 )
                 # Checkout and track the remote branch
-                subprocess.run(
+                self.executor.run(
                     ["git", "checkout", "-B", branch_name, f"origin/{branch_name}"],
-                    cwd=repo_temp_dir,
+                    cwd=repo_temp_path,
                     check=True,
                 )
             else:
                 # Fetch only main branch for new branch creation
-                subprocess.run(["git", "fetch", "origin", "main"], cwd=repo_temp_dir, check=True)
+                self.executor.run(
+                    ["git", "fetch", "origin", "main"], cwd=repo_temp_path, check=True
+                )
                 # Branch from latest main
-                subprocess.run(
+                self.executor.run(
                     ["git", "checkout", "origin/main", "-b", branch_name],
-                    cwd=repo_temp_dir,
+                    cwd=repo_temp_path,
                     check=True,
                 )
 
             # Delete everything in repo_temp_dir except .git folder
-            for item in os.listdir(repo_temp_dir):
-                item_path = os.path.join(repo_temp_dir, item)
-                if item != ".git" and os.path.exists(item_path):
-                    if os.path.isdir(item_path):
-                        shutil.rmtree(item_path)
+            for item in repo_temp_path.iterdir():
+                if item.name != ".git" and item.exists():
+                    if item.is_dir():
+                        shutil.rmtree(item)
                     else:
-                        os.remove(item_path)
+                        item.unlink()
 
             # Copy manifests to repo directory
-            shutil.copytree(manifests_dir, repo_temp_dir, dirs_exist_ok=True)
+            shutil.copytree(manifests_dir, repo_temp_path, dirs_exist_ok=True)
 
             # Commit manifests back
             commit_sha = self.fetch_commit_hash()
-            subprocess.run(["git", "add", "."], cwd=repo_temp_dir, check=True)
-            subprocess.run(
+            self.executor.run(["git", "add", "."], cwd=repo_temp_path, check=True)
+            self.executor.run(
                 [
                     "git",
                     "commit",
@@ -151,14 +142,18 @@ class GitManager:
                     "-m",
                     f"Update manifests for branch {branch_name} (commit {commit_sha})",
                 ],
-                cwd=repo_temp_dir,
+                cwd=repo_temp_path,
                 check=True,
             )
-            subprocess.run(["git", "push", "origin", branch_name], cwd=repo_temp_dir, check=True)
+            self.executor.run(
+                ["git", "push", "origin", branch_name], cwd=repo_temp_path, check=True
+            )
 
 
 if __name__ == "__main__":
-    print(f"Starting push_manifests. Working directory: {os.getcwd()}")
+    from pathlib import Path
+
+    print(f"Starting push_manifests. Working directory: {Path.cwd()}")
 
     try:
         git_instance = GitManager()
@@ -168,4 +163,4 @@ if __name__ == "__main__":
         import traceback
 
         traceback.print_exc()
-        sys.exit(1)
+        exit(1)

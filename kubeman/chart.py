@@ -1,9 +1,9 @@
 from abc import abstractmethod
-import os
+from pathlib import Path
 import tempfile
-import subprocess
 import yaml
 from kubeman.template import Template
+from kubeman.executor import get_executor
 
 
 class HelmChart(Template):
@@ -72,31 +72,38 @@ class HelmChart(Template):
 
     def ensure_helm_repo(self) -> str:
         """
-        Ensure the helm repository is added and return the repo name.
+        Ensure the helm repository is added and updated, then return the repo name.
         """
+        executor = get_executor()
         repo_name = f"repo-{self.name}"
-        result = subprocess.run(["helm", "repo", "list"], capture_output=True, text=True)
+        result = executor.run_silent(["helm", "repo", "list"])
         # Split into lines and check for exact match to avoid substring matches
         repo_lines = result.stdout.splitlines()
         repo_exists = any(line.split()[0] == repo_name for line in repo_lines if line.strip())
         if not repo_exists:
-            subprocess.run(
+            executor.run(
                 ["helm", "repo", "add", repo_name, self.repository["remote"]],
                 check=True,
             )
+        # Always update the repo to ensure we have the latest chart versions
+        executor.run(
+            ["helm", "repo", "update", repo_name],
+            check=True,
+        )
         return repo_name
 
     def full_helm_package_name(self) -> str:
-        # Add helm repo if needed
+        """Get the full Helm package name based on repository type."""
         if self.repository["type"] == "classic":
             repo_name = self.ensure_helm_repo()
             repo_package = self.repository_package
             return f"{repo_name}/{repo_package}"
-        if self.repository["type"] == "oci":
+        elif self.repository["type"] == "oci":
             repo_name = self.repository["remote"]
             repo_package = self.repository_package
             return f"{repo_name}/{repo_package}"
-            return self.repository["remote"]
+        elif self.repository["type"] == "none":
+            return self.repository.get("remote", "")
         else:
             raise ValueError(f"Unknown repository type: {self.repository['type']}")
 
@@ -109,10 +116,11 @@ class HelmChart(Template):
         if self.repository["type"] == "none":
             return
 
+        executor = get_executor()
         print(f"\nRendering helm chart for {self.name}...")
         with tempfile.TemporaryDirectory() as tmpdir:
             # Write values to temporary file
-            values_file = os.path.join(tmpdir, "values.yaml")
+            values_file = Path(tmpdir) / "values.yaml"
             with open(values_file, "w") as f:
                 f.write(self.to_values_yaml())
 
@@ -127,7 +135,7 @@ class HelmChart(Template):
                 "--version",
                 self.version,
                 "--values",
-                values_file,
+                str(values_file),
                 "--namespace",
                 self.namespace,
                 "--include-crds",
@@ -135,17 +143,20 @@ class HelmChart(Template):
 
             # Run helm template
             try:
-                result = subprocess.run(cmd, check=True, capture_output=True, text=True)
+                result = executor.run(cmd, capture_output=True, text=True, check=True)
                 # Write output to manifests directory
-                output_dir = os.path.join(self.manifests_dir(), self.name)
-                os.makedirs(output_dir, exist_ok=True)
-                output_file = os.path.join(output_dir, f"{self.name}-manifests.yaml")
+                manifests_dir = self.manifests_dir()
+                if isinstance(manifests_dir, str):
+                    manifests_dir = Path(manifests_dir)
+                output_dir = manifests_dir / self.name
+                output_dir.mkdir(parents=True, exist_ok=True)
+                output_file = output_dir / f"{self.name}-manifests.yaml"
 
                 print(f"Writing helm output to {output_file}")
                 with open(output_file, "w") as f:
                     f.write(result.stdout)
-            except subprocess.CalledProcessError as e:
-                raise RuntimeError(f"Helm template failed: {e.stderr}")
+            except Exception as e:
+                raise RuntimeError(f"Helm template failed: {e}")
 
     def render_extra(self) -> None:
         """
@@ -158,8 +169,11 @@ class HelmChart(Template):
             return
 
         print(f"\nRendering {len(extra_manifests)} extra manifests for {self.name}...")
-        output_dir = os.path.join(self.manifests_dir(), self.name)
-        os.makedirs(output_dir, exist_ok=True)
+        manifests_dir = self.manifests_dir()
+        if isinstance(manifests_dir, str):
+            manifests_dir = Path(manifests_dir)
+        output_dir = manifests_dir / self.name
+        output_dir.mkdir(parents=True, exist_ok=True)
 
         for manifest in extra_manifests:
             if not manifest.get("metadata") or not manifest["metadata"].get("name"):
@@ -170,14 +184,14 @@ class HelmChart(Template):
 
             manifest_name = manifest["metadata"]["name"]
             manifest_kind = manifest["kind"].lower()
-            output_file = os.path.join(output_dir, f"{manifest_name}-{manifest_kind}.yaml")
+            output_file = output_dir / f"{manifest_name}-{manifest_kind}.yaml"
 
-            if os.path.exists(output_file):
-                raise ValueError(
-                    f"Skipping {manifest_name}-{manifest_kind} because it already exists"
+            if output_file.exists():
+                print(
+                    f"Overwriting existing manifest {manifest_name} ({manifest_kind}) at {output_file}"
                 )
-
-            print(f"Writing manifest {manifest_name} ({manifest_kind}) to {output_file}")
+            else:
+                print(f"Writing manifest {manifest_name} ({manifest_kind}) to {output_file}")
 
             with open(output_file, "w") as f:
                 yaml.dump(manifest, f)

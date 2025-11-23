@@ -2,7 +2,7 @@
 
 import os
 import pytest
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, patch, MagicMock
 from kubeman.chart import HelmChart
 from kubeman.kubernetes import KubernetesResource
 from kubeman.git import GitManager
@@ -76,8 +76,8 @@ class TestHelmChart:
     def test_manifests_dir(self):
         """Test manifests_dir static method."""
         dir_path = HelmChart.manifests_dir()
-        assert os.path.isabs(dir_path)
-        assert "manifests" in dir_path
+        assert dir_path.is_absolute()
+        assert "manifests" in str(dir_path)
 
     def test_argo_ignore_spec_default(self):
         """Test that argo_ignore_spec returns empty list by default."""
@@ -233,13 +233,13 @@ class TestHelmChart:
     def test_full_helm_package_name_classic(self):
         """Test full_helm_package_name for classic repository."""
         chart = ConcreteHelmChart()
-        with patch("subprocess.run") as mock_run:
-            mock_run.return_value = Mock(stdout="", stderr="")
+        with patch("kubeman.chart.get_executor") as mock_get_executor:
+            mock_executor = MagicMock()
             # Mock helm repo list (repo doesn't exist)
-            mock_run.side_effect = [
-                Mock(stdout="", stderr=""),  # repo list
-                Mock(returncode=0),  # repo add
-            ]
+            mock_executor.run_silent.return_value = Mock(stdout="", stderr="")
+            mock_executor.run.return_value = Mock(returncode=0)
+            mock_get_executor.return_value = mock_executor
+
             package_name = chart.full_helm_package_name()
             assert "repo-test-chart" in package_name
             assert "test-chart" in package_name
@@ -272,28 +272,35 @@ class TestHelmChart:
     def test_ensure_helm_repo_adds_if_missing(self):
         """Test that ensure_helm_repo adds repo if it doesn't exist."""
         chart = ConcreteHelmChart()
-        with patch("subprocess.run") as mock_run:
+        with patch("kubeman.chart.get_executor") as mock_get_executor:
+            mock_executor = MagicMock()
             # Mock helm repo list (repo doesn't exist)
-            mock_run.side_effect = [
-                Mock(stdout="", stderr=""),  # repo list
-                Mock(returncode=0),  # repo add
-            ]
+            mock_executor.run_silent.return_value = Mock(stdout="", stderr="")
+            mock_executor.run.return_value = Mock(returncode=0)
+            mock_get_executor.return_value = mock_executor
+
             repo_name = chart.ensure_helm_repo()
             assert repo_name == "repo-test-chart"
-            assert mock_run.call_count == 2
+            assert mock_executor.run.call_count == 2  # repo add + repo update
+            assert mock_executor.run_silent.call_count == 1  # repo list
 
     def test_ensure_helm_repo_skips_if_exists(self):
         """Test that ensure_helm_repo skips adding if repo exists."""
         chart = ConcreteHelmChart()
-        with patch("subprocess.run") as mock_run:
+        with patch("kubeman.chart.get_executor") as mock_get_executor:
+            mock_executor = MagicMock()
             # Mock helm repo list (repo exists)
-            mock_run.return_value = Mock(
+            mock_executor.run_silent.return_value = Mock(
                 stdout="repo-test-chart  https://charts.example.com", stderr=""
             )
+            mock_executor.run.return_value = Mock(returncode=0)
+            mock_get_executor.return_value = mock_executor
+
             repo_name = chart.ensure_helm_repo()
             assert repo_name == "repo-test-chart"
-            # Should only call repo list, not repo add
-            assert mock_run.call_count == 1
+            # Should call repo list and repo update, but not repo add
+            assert mock_executor.run_silent.call_count == 1
+            assert mock_executor.run.call_count == 1  # repo update
 
     def test_render_helm_skips_if_none(self, tmp_path):
         """Test that render_helm skips if repository type is 'none'."""
@@ -305,10 +312,13 @@ class TestHelmChart:
 
         chart = NoRepoChart()
         # Should not raise error and should not call helm
-        with patch("subprocess.run") as mock_run:
+        with patch("kubeman.chart.get_executor") as mock_get_executor:
+            mock_executor = MagicMock()
+            mock_get_executor.return_value = mock_executor
+
             chart.render_helm()
             # Should not call helm template
-            assert not any("template" in str(call) for call in mock_run.call_args_list)
+            assert mock_executor.run.call_count == 0
 
     def test_render_extra_with_valid_manifests(self, tmp_path):
         """Test rendering extra manifests."""
@@ -353,7 +363,7 @@ class TestHelmChart:
             chart.render_extra()
 
     def test_render_extra_duplicate_file(self, tmp_path):
-        """Test that render_extra raises error if file already exists."""
+        """Test that render_extra overwrites existing file."""
 
         class ChartWithExtras(ConcreteHelmChart):
             def extra_manifests(self):
@@ -362,17 +372,23 @@ class TestHelmChart:
                         "apiVersion": "v1",
                         "kind": "ConfigMap",
                         "metadata": {"name": "test-config"},
+                        "data": {"key": "new-value"},
                     }
                 ]
 
         chart = ChartWithExtras()
         output_dir = tmp_path / "test-chart"
         output_dir.mkdir(parents=True)
-        (output_dir / "test-config-configmap.yaml").write_text("existing")
+        existing_file = output_dir / "test-config-configmap.yaml"
+        existing_file.write_text("existing")
 
         with patch.object(chart, "manifests_dir", return_value=str(tmp_path)):
-            with pytest.raises(ValueError, match="already exists"):
-                chart.render_extra()
+            chart.render_extra()
+            # Verify file was overwritten with new content
+            assert existing_file.exists()
+            content = existing_file.read_text()
+            assert "new-value" in content
+            assert "existing" not in content
 
 
 class ConcreteKubernetesResource(KubernetesResource):
@@ -434,8 +450,8 @@ class TestKubernetesResource:
     def test_manifests_dir(self):
         """Test manifests_dir static method."""
         dir_path = KubernetesResource.manifests_dir()
-        assert os.path.isabs(dir_path)
-        assert "manifests" in dir_path
+        assert dir_path.is_absolute()
+        assert "manifests" in str(dir_path)
 
     def test_argo_ignore_spec_default(self):
         """Test that argo_ignore_spec returns empty list by default."""
@@ -617,15 +633,32 @@ class TestKubernetesResource:
             resource.render_manifests()
 
     def test_render_manifests_duplicate_file(self, tmp_path):
-        """Test that render_manifests raises error if file already exists."""
-        resource = ConcreteKubernetesResource()
+        """Test that render_manifests overwrites existing file."""
+
+        class ResourceWithManifests(ConcreteKubernetesResource):
+            def manifests(self):
+                return [
+                    {
+                        "apiVersion": "v1",
+                        "kind": "ConfigMap",
+                        "metadata": {"name": "test-config"},
+                        "data": {"key": "new-value"},
+                    }
+                ]
+
+        resource = ResourceWithManifests()
         output_dir = tmp_path / "test-resource"
         output_dir.mkdir(parents=True)
-        (output_dir / "test-config-configmap.yaml").write_text("existing")
+        existing_file = output_dir / "test-config-configmap.yaml"
+        existing_file.write_text("existing")
 
         with patch.object(resource, "manifests_dir", return_value=str(tmp_path)):
-            with pytest.raises(ValueError, match="already exists"):
-                resource.render_manifests()
+            resource.render_manifests()
+            # Verify file was overwritten with new content
+            assert existing_file.exists()
+            content = existing_file.read_text()
+            assert "new-value" in content
+            assert "existing" not in content
 
     def test_render_manifests_empty_list(self, tmp_path, capsys):
         """Test that render_manifests handles empty manifest list."""
