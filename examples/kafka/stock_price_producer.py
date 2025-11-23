@@ -92,6 +92,21 @@ class StockPriceProducer(KubernetesResource):
             labels={"app": "stock-price-producer", "component": "producer"},
         )
 
+    def build(self) -> None:
+        """Build Docker image for stock price producer"""
+        from pathlib import Path
+        from kubeman import DockerManager
+
+        # Get the directory containing this file (examples/kafka)
+        kafka_dir = Path(__file__).parent
+        docker = DockerManager()
+        docker.build_image(
+            component="stock-price-producer",
+            context_path=str(kafka_dir),
+            tag="latest",
+            dockerfile="Dockerfile.producer",
+        )
+
     def enable_argocd(self) -> bool:
         """Enable ArgoCD Application generation (optional)"""
         return False

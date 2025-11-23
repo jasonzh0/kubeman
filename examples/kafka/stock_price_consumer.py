@@ -77,6 +77,21 @@ class StockPriceConsumer(KubernetesResource):
             labels={"app": "stock-price-consumer", "component": "consumer"},
         )
 
+    def build(self) -> None:
+        """Build Docker image for stock price consumer"""
+        from pathlib import Path
+        from kubeman import DockerManager
+
+        # Get the directory containing this file (examples/kafka)
+        kafka_dir = Path(__file__).parent
+        docker = DockerManager()
+        docker.build_image(
+            component="stock-price-consumer",
+            context_path=str(kafka_dir),
+            tag="latest",
+            dockerfile="Dockerfile.consumer",
+        )
+
     def enable_argocd(self) -> bool:
         """Enable ArgoCD Application generation (optional)"""
         return False

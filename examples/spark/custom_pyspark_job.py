@@ -87,6 +87,21 @@ class CustomPySparkJob(KubernetesResource):
             },
         ]
 
+    def build(self) -> None:
+        """Build Docker image for custom PySpark job"""
+        from pathlib import Path
+        from kubeman import DockerManager
+
+        # Get the directory containing this file (examples/spark)
+        spark_dir = Path(__file__).parent
+        docker = DockerManager()
+        docker.build_image(
+            component="custom-pyspark-job",
+            context_path=str(spark_dir),
+            tag="latest",
+            dockerfile="Dockerfile.pyspark",
+        )
+
     def enable_argocd(self) -> bool:
         """Enable ArgoCD Application generation (optional)"""
         return False

@@ -38,13 +38,20 @@ class DockerManager:
             self.registry = f"{region}-docker.pkg.dev/{self.project_id}/{repository_name}"
         self.repository = Config.github_repository()
 
-    def build_image(self, component: str, context_path: str, tag: Optional[str] = None) -> str:
+    def build_image(
+        self,
+        component: str,
+        context_path: str,
+        tag: Optional[str] = None,
+        dockerfile: Optional[str] = None,
+    ) -> str:
         """Build a Docker image for a component.
 
         Args:
             component: The name of the component (e.g., 'frontend')
             context_path: Path to the Docker context
             tag: Optional specific tag, defaults to 'latest'
+            dockerfile: Optional Dockerfile name (defaults to 'Dockerfile')
 
         Returns:
             Full image name including registry and tag
@@ -56,7 +63,7 @@ class DockerManager:
         self._ensure_gcloud_auth()
 
         context = Path(context_path)
-        dockerfile = context / "Dockerfile"
+        dockerfile_path = context / (dockerfile or "Dockerfile")
 
         cmd = [
             "docker",
@@ -64,7 +71,7 @@ class DockerManager:
             "-t",
             image_name,
             "-f",
-            str(dockerfile),
+            str(dockerfile_path),
             str(context),
         ]
 
@@ -94,15 +101,22 @@ class DockerManager:
         self.executor.run(cmd, check=True)
         return image_name
 
-    def build_and_push(self, component: str, context_path: str, tag: Optional[str] = None) -> str:
+    def build_and_push(
+        self,
+        component: str,
+        context_path: str,
+        tag: Optional[str] = None,
+        dockerfile: Optional[str] = None,
+    ) -> str:
         """Build and push a Docker image in one go.
 
         Args:
             component: The name of the component
             context_path: Path to the Docker context
             tag: Optional specific tag
+            dockerfile: Optional Dockerfile name (defaults to 'Dockerfile')
         """
-        image_name = self.build_image(component, context_path, tag)
+        image_name = self.build_image(component, context_path, tag, dockerfile)
         self.push_image(component, tag)
         return image_name
 

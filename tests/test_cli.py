@@ -408,17 +408,32 @@ class TestCmdRender:
 
     @patch("kubeman.cli.render_templates")
     @patch("kubeman.cli.load_templates_file")
-    def test_successful_render(self, mock_load, mock_render, capsys):
+    @patch("kubeman.cli.TemplateRegistry")
+    def test_successful_render(self, mock_registry, mock_load, mock_render, capsys):
         """Test successful render command."""
-        args = Mock(file="/test/templates.py")
+        args = Mock(file="/test/templates.py", skip_build=False)
 
         cmd_render(args)
 
+        mock_registry.set_skip_builds.assert_called_once_with(False)
         mock_load.assert_called_once_with("/test/templates.py")
         mock_render.assert_called_once()
 
         output = capsys.readouterr()
         assert "All templates rendered successfully" in output.out
+
+    @patch("kubeman.cli.render_templates")
+    @patch("kubeman.cli.load_templates_file")
+    @patch("kubeman.cli.TemplateRegistry")
+    def test_render_with_skip_build(self, mock_registry, mock_load, mock_render, capsys):
+        """Test render command with --skip-build flag."""
+        args = Mock(file="/test/templates.py", skip_build=True)
+
+        cmd_render(args)
+
+        mock_registry.set_skip_builds.assert_called_once_with(True)
+        mock_load.assert_called_once_with("/test/templates.py")
+        mock_render.assert_called_once()
 
     @patch("kubeman.cli.load_templates_file")
     def test_render_file_not_found(self, mock_load, capsys):
@@ -468,15 +483,20 @@ class TestCmdApply:
     @patch("kubeman.cli.apply_manifests")
     @patch("kubeman.cli.render_templates")
     @patch("kubeman.cli.load_templates_file")
-    def test_successful_apply(self, mock_load, mock_render, mock_apply, capsys):
+    @patch("kubeman.cli.TemplateRegistry")
+    def test_successful_apply(self, mock_registry, mock_load, mock_render, mock_apply, capsys):
         """Test successful apply command."""
-        args = Mock(file="/test/templates.py", namespace=None)
+        mock_render.return_value = ["template1", "template2"]
+        args = Mock(file="/test/templates.py", namespace=None, skip_build=False)
 
         cmd_apply(args)
 
+        mock_registry.set_skip_builds.assert_called_once_with(False)
         mock_load.assert_called_once_with("/test/templates.py")
         mock_render.assert_called_once_with(manifests_dir=None)
-        mock_apply.assert_called_once_with(namespace=None, manifests_dir=None)
+        mock_apply.assert_called_once_with(
+            namespace=None, manifests_dir=None, template_names=["template1", "template2"]
+        )
 
         output = capsys.readouterr()
         assert "Templates rendered successfully" in output.out
@@ -484,13 +504,18 @@ class TestCmdApply:
     @patch("kubeman.cli.apply_manifests")
     @patch("kubeman.cli.render_templates")
     @patch("kubeman.cli.load_templates_file")
-    def test_apply_with_namespace(self, mock_load, mock_render, mock_apply):
+    @patch("kubeman.cli.TemplateRegistry")
+    def test_apply_with_namespace(self, mock_registry, mock_load, mock_render, mock_apply):
         """Test apply command with namespace."""
-        args = Mock(file="/test/templates.py", namespace="test-ns")
+        mock_render.return_value = ["template1"]
+        args = Mock(file="/test/templates.py", namespace="test-ns", skip_build=False)
 
         cmd_apply(args)
 
-        mock_apply.assert_called_once_with(namespace="test-ns", manifests_dir=None)
+        mock_registry.set_skip_builds.assert_called_once_with(False)
+        mock_apply.assert_called_once_with(
+            namespace="test-ns", manifests_dir=None, template_names=["template1"]
+        )
 
     @patch("kubeman.cli.load_templates_file")
     def test_apply_file_not_found(self, mock_load, capsys):

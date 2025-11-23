@@ -110,6 +110,25 @@ class Template(ABC):
             apps_subdir=self.apps_subdirectory(),
         )
 
+    def build(self) -> None:
+        """
+        Build Docker images for this template.
+
+        Override this method to define build steps that should execute
+        when the template is registered. Build steps run sequentially
+        in registration order.
+
+        By default, this method does nothing. Subclasses can override it
+        to implement build steps.
+
+        Example:
+            def build(self) -> None:
+                from kubeman import DockerManager
+                docker = DockerManager()
+                docker.build_and_push("my-component", "./path/to/context", tag="latest")
+        """
+        pass
+
     @abstractmethod
     def render(self) -> None:
         """

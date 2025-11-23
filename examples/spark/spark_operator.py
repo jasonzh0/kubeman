@@ -72,7 +72,3 @@ class SparkOperator(HelmChart):
                 },
             },
         }
-
-    def enable_argocd(self) -> bool:
-        """Enable ArgoCD Application generation (optional)"""
-        return False

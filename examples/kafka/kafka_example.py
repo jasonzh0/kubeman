@@ -55,10 +55,6 @@ class StrimziOperator(HelmChart):
             "watchAnyNamespace": True,
         }
 
-    def enable_argocd(self) -> bool:
-        """Enable ArgoCD Application generation (optional)"""
-        return False
-
 
 @TemplateRegistry.register
 class KafkaCluster(KubernetesResource):
@@ -170,7 +166,3 @@ class KafkaCluster(KubernetesResource):
                 },
             },
         ]
-
-    def enable_argocd(self) -> bool:
-        """Enable ArgoCD Application generation (optional)"""
-        return False

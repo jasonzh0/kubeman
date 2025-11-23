@@ -85,6 +85,29 @@ class TestDockerManager:
         assert image_name.endswith(":latest")
         assert mock_executor.run.call_count == 2
 
+    def test_build_image_custom_dockerfile(self, monkeypatch):
+        """Test building image with custom Dockerfile name."""
+        monkeypatch.setenv("DOCKER_PROJECT_ID", "test-project")
+        manager = DockerManager()
+
+        mock_executor = MagicMock()
+        mock_executor.run.return_value = Mock(returncode=0)
+        manager.executor = mock_executor
+
+        image_name = manager.build_image(
+            "component", "/path/to/context", tag="v1.0.0", dockerfile="Dockerfile.custom"
+        )
+
+        assert image_name == f"{manager.registry}/component:v1.0.0"
+        assert mock_executor.run.call_count == 2  # auth + build
+
+        # Check that the dockerfile parameter was used
+        build_call = mock_executor.run.call_args_list[1]
+        cmd = build_call[0][0]
+        assert "-f" in cmd
+        dockerfile_index = cmd.index("-f")
+        assert cmd[dockerfile_index + 1] == "/path/to/context/Dockerfile.custom"
+
     def test_push_image(self, monkeypatch):
         """Test pushing a Docker image."""
         monkeypatch.setenv("DOCKER_PROJECT_ID", "test-project")
@@ -159,6 +182,35 @@ class TestDockerManager:
 
         assert image_name == f"{manager.registry}/component:v1.0.0"
         assert mock_executor.run.call_count == 5
+
+    def test_build_and_push_custom_dockerfile(self, monkeypatch):
+        """Test building and pushing with custom Dockerfile."""
+        monkeypatch.setenv("DOCKER_PROJECT_ID", "test-project")
+        manager = DockerManager()
+
+        mock_executor = MagicMock()
+        mock_executor.run.side_effect = [
+            Mock(returncode=0),  # configure-docker (build)
+            Mock(returncode=0),  # build
+            Mock(returncode=0, stdout="token"),  # print-access-token
+            Mock(returncode=0),  # configure-docker (push)
+            Mock(returncode=0),  # push
+        ]
+        manager.executor = mock_executor
+
+        image_name = manager.build_and_push(
+            "component", "/path/to/context", "v1.0.0", dockerfile="Dockerfile.custom"
+        )
+
+        assert image_name == f"{manager.registry}/component:v1.0.0"
+        assert mock_executor.run.call_count == 5
+
+        # Check that the dockerfile parameter was used in build
+        build_call = mock_executor.run.call_args_list[1]
+        cmd = build_call[0][0]
+        assert "-f" in cmd
+        dockerfile_index = cmd.index("-f")
+        assert cmd[dockerfile_index + 1] == "/path/to/context/Dockerfile.custom"
 
     def test_ensure_gcloud_auth(self, monkeypatch):
         """Test container registry authentication configuration."""

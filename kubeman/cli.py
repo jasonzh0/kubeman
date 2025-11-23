@@ -552,6 +552,10 @@ def cmd_render(args: argparse.Namespace) -> None:
         # Clear registry before loading
         TemplateRegistry.clear()
 
+        # Set skip_builds flag if requested
+        skip_builds = getattr(args, "skip_build", False)
+        TemplateRegistry.set_skip_builds(skip_builds)
+
         # Load templates file (imports trigger registration)
         templates_file = args.file or "./templates.py"
         load_templates_file(templates_file)
@@ -578,6 +582,10 @@ def cmd_apply(args: argparse.Namespace) -> None:
     try:
         # Clear registry before loading
         TemplateRegistry.clear()
+
+        # Set skip_builds flag if requested
+        skip_builds = getattr(args, "skip_build", False)
+        TemplateRegistry.set_skip_builds(skip_builds)
 
         # Load templates file (imports trigger registration)
         templates_file = args.file or "./templates.py"
@@ -638,6 +646,11 @@ The templates.py file should import template modules to trigger registration via
         "--output-dir",
         help="Output directory for manifests (defaults to ./manifests or MANIFESTS_DIR env var)",
     )
+    render_parser.add_argument(
+        "--skip-build",
+        action="store_true",
+        help="Skip Docker image build steps during template registration",
+    )
     render_parser.set_defaults(func=cmd_render)
 
     # Apply subcommand
@@ -656,6 +669,11 @@ The templates.py file should import template modules to trigger registration via
     apply_parser.add_argument(
         "--namespace",
         help="Kubernetes namespace to use for apply",
+    )
+    apply_parser.add_argument(
+        "--skip-build",
+        action="store_true",
+        help="Skip Docker image build steps during template registration",
     )
     apply_parser.set_defaults(func=cmd_apply)
 
