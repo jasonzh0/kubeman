@@ -9,7 +9,7 @@ import argparse
 import importlib.util
 import sys
 from pathlib import Path
-from typing import Optional, Tuple, List
+from typing import Optional, Tuple, List, Dict, Any
 import yaml
 
 from kubeman.register import TemplateRegistry
@@ -550,6 +550,227 @@ def cmd_apply(args: argparse.Namespace) -> None:
         sys.exit(1)
 
 
+def generate_plan(
+    namespace: Optional[str] = None,
+    manifests_dir: Optional[Path] = None,
+) -> Dict[str, Any]:
+    """
+    Generate a plan showing what would be built, applied, and loaded.
+
+    Args:
+        namespace: Optional namespace to filter manifests
+        manifests_dir: Optional custom directory for manifests.
+                      If None, uses default from Config.
+
+    Returns:
+        Dictionary containing plan information with keys:
+        - templates_with_build: List of template names that would build images
+        - templates_with_load: List of template names that would load images
+        - template_names: List of all template names that would be rendered
+        - manifest_files: Dictionary with categorized manifest files
+          - crd_files: List of CRD file paths
+          - namespace_files: List of Namespace file paths
+          - other_files: List of other resource file paths
+        - total_manifests: Total count of manifest files
+    """
+    original_dir = None
+    if manifests_dir is not None:
+        original_dir = Template.manifests_dir()
+        Template.set_manifests_dir(Path(manifests_dir).resolve())
+
+    plan: Dict[str, Any] = {
+        "templates_with_build": [],
+        "templates_with_load": [],
+        "template_names": [],
+        "manifest_files": {
+            "crd_files": [],
+            "namespace_files": [],
+            "other_files": [],
+        },
+        "total_manifests": 0,
+    }
+
+    try:
+        templates = TemplateRegistry.get_registered_templates()
+
+        if not templates:
+            return plan
+
+        # Detect templates with build/load methods
+        for template_class in templates:
+            template_instance = template_class()
+            template_name = template_instance.name
+            plan["template_names"].append(template_name)
+
+            if TemplateRegistry._has_custom_build(template_class):
+                plan["templates_with_build"].append(template_name)
+
+            if TemplateRegistry._has_custom_load(template_class):
+                plan["templates_with_load"].append(template_name)
+
+        # Render templates to see what manifests would be generated
+        rendered_template_names = []
+        for template_class in templates:
+            try:
+                template = template_class()
+                template.render()
+                rendered_template_names.append(template.name)
+            except Exception as e:
+                # Continue with other templates even if one fails
+                # The plan should show what would succeed
+                continue
+
+        # Analyze rendered manifests (only from the templates we just rendered)
+        manifests_dir_path = Template.manifests_dir()
+        if isinstance(manifests_dir_path, str):
+            manifests_dir_path = Path(manifests_dir_path)
+
+        if manifests_dir_path.exists():
+            yaml_files = list(manifests_dir_path.rglob("*.yaml")) + list(
+                manifests_dir_path.rglob("*.yml")
+            )
+
+            # Filter by template names
+            if rendered_template_names:
+                yaml_files = _filter_manifests_by_template_names(
+                    yaml_files, rendered_template_names, manifests_dir_path
+                )
+
+            if namespace:
+                yaml_files = _filter_manifests_by_namespace(yaml_files, namespace)
+
+            crd_only_files, namespace_files, other_files = _categorize_yaml_files(yaml_files)
+
+            plan["manifest_files"]["crd_files"] = [str(f) for f in crd_only_files] + [
+                f"(extracted from {f})" for f in other_files if _contains_crd(f)
+            ]
+            plan["manifest_files"]["namespace_files"] = [str(f) for f in namespace_files]
+            plan["manifest_files"]["other_files"] = [str(f) for f in other_files]
+            plan["total_manifests"] = len(yaml_files)
+
+    finally:
+        # Reset to original directory
+        if manifests_dir is not None:
+            Template.set_manifests_dir(original_dir)
+
+    return plan
+
+
+def display_plan(plan: Dict[str, Any], verbose: bool = False) -> None:
+    """
+    Display the plan in a human-readable format.
+
+    Args:
+        plan: Plan dictionary from generate_plan()
+        verbose: If True, show detailed output including file paths
+    """
+    print("\n" + "=" * 60)
+    print("PLAN: What would be built, applied, and loaded")
+    print("=" * 60)
+
+    # Build operations
+    print(f"\n📦 Build Operations:")
+    build_count = len(plan["templates_with_build"])
+    if build_count > 0:
+        print(f"  {build_count} template(s) would build Docker images:")
+        if verbose:
+            for template_name in plan["templates_with_build"]:
+                print(f"    - {template_name}")
+        else:
+            print(f"    Templates: {', '.join(plan['templates_with_build'])}")
+    else:
+        print("  No build operations would be executed")
+
+    # Load operations
+    print(f"\n🚚 Load Operations:")
+    load_count = len(plan["templates_with_load"])
+    if load_count > 0:
+        print(f"  {load_count} template(s) would load Docker images into kind cluster:")
+        if verbose:
+            for template_name in plan["templates_with_load"]:
+                print(f"    - {template_name}")
+        else:
+            print(f"    Templates: {', '.join(plan['templates_with_load'])}")
+    else:
+        print("  No load operations would be executed")
+
+    # Render operations
+    print(f"\n📝 Render Operations:")
+    render_count = len(plan["template_names"])
+    if render_count > 0:
+        print(f"  {render_count} template(s) would be rendered:")
+        if verbose:
+            for template_name in plan["template_names"]:
+                print(f"    - {template_name}")
+        else:
+            print(f"    Templates: {', '.join(plan['template_names'])}")
+    else:
+        print("  No templates would be rendered")
+
+    # Apply operations
+    print(f"\n⚙️  Apply Operations:")
+    manifest_files = plan["manifest_files"]
+    crd_count = len(manifest_files["crd_files"])
+    namespace_count = len(manifest_files["namespace_files"])
+    other_count = len(manifest_files["other_files"])
+    total_manifests = plan["total_manifests"]
+
+    if total_manifests > 0:
+        print(f"  {total_manifests} manifest file(s) would be applied:")
+        if crd_count > 0:
+            print(f"    - {crd_count} CRD file(s) (applied first)")
+            if verbose:
+                for file_path in manifest_files["crd_files"]:
+                    print(f"      • {file_path}")
+        if namespace_count > 0:
+            print(f"    - {namespace_count} Namespace file(s) (applied next)")
+            if verbose:
+                for file_path in manifest_files["namespace_files"]:
+                    print(f"      • {file_path}")
+        if other_count > 0:
+            print(f"    - {other_count} other resource file(s)")
+            if verbose:
+                for file_path in manifest_files["other_files"]:
+                    print(f"      • {file_path}")
+    else:
+        print("  No manifests would be applied")
+
+    print("\n" + "=" * 60)
+
+
+def cmd_plan(args: argparse.Namespace) -> None:
+    """Handle the plan subcommand."""
+    try:
+        TemplateRegistry.clear()
+
+        # Always skip builds and loads for plan command
+        TemplateRegistry.set_skip_builds(True)
+        TemplateRegistry.set_skip_loads(True)
+
+        # Load templates file (imports trigger registration)
+        templates_file = args.file or "./templates.py"
+        load_templates_file(templates_file)
+
+        # Get optional output directory
+        output_dir = None
+        if hasattr(args, "output_dir") and args.output_dir is not None:
+            try:
+                output_dir = Path(args.output_dir).resolve()
+            except (TypeError, AttributeError):
+                output_dir = None
+
+        # Generate plan
+        plan = generate_plan(namespace=args.namespace, manifests_dir=output_dir)
+
+        # Display plan
+        verbose = getattr(args, "verbose", False)
+        display_plan(plan, verbose=verbose)
+
+    except (FileNotFoundError, ImportError, ValueError, RuntimeError) as e:
+        print(f"✗ Error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
 def main() -> None:
     """Main entry point for kubeman CLI."""
     parser = argparse.ArgumentParser(
@@ -559,8 +780,10 @@ def main() -> None:
 Examples:
   kubeman render --file examples/kafka/templates.py
   kubeman apply --file examples/kafka/templates.py
+  kubeman plan --file examples/kafka/templates.py
   kubeman render
   kubeman apply
+  kubeman plan --verbose
 
 The templates.py file should import template modules to trigger registration via
 @TemplateRegistry.register decorators.
@@ -612,6 +835,35 @@ The templates.py file should import template modules to trigger registration via
         help="Skip Docker image build steps during template registration",
     )
     apply_parser.set_defaults(func=cmd_apply)
+
+    # Plan subcommand
+    plan_parser = subparsers.add_parser(
+        "plan",
+        help="Show what would be built, applied, and loaded without executing",
+    )
+    plan_parser.add_argument(
+        "--file",
+        help="Path to templates.py file (defaults to ./templates.py)",
+    )
+    plan_parser.add_argument(
+        "--output-dir",
+        help="Output directory for manifests (defaults to ./manifests or MANIFESTS_DIR env var)",
+    )
+    plan_parser.add_argument(
+        "--namespace",
+        help="Kubernetes namespace to filter manifests",
+    )
+    plan_parser.add_argument(
+        "--skip-build",
+        action="store_true",
+        help="Skip Docker image build steps during template registration (ignored for plan, always skipped)",
+    )
+    plan_parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Show detailed output including file paths and template names",
+    )
+    plan_parser.set_defaults(func=cmd_plan)
 
     args = parser.parse_args()
 
