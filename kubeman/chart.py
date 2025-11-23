@@ -144,6 +144,51 @@ class HelmChart(Template):
             # Run helm template
             try:
                 result = executor.run(cmd, capture_output=True, text=True, check=True)
+
+                # Post-process the output to ensure all namespace-scoped resources have the namespace set
+                # Some Helm charts don't include namespace in metadata even when --namespace is specified
+                output_content = result.stdout
+                if self.namespace:
+                    # Parse YAML documents and add namespace to resources that don't have it
+                    documents = list(yaml.safe_load_all(output_content))
+                    processed_docs = []
+                    cluster_scoped_kinds = [
+                        "CustomResourceDefinition",
+                        "ClusterRole",
+                        "ClusterRoleBinding",
+                        "Namespace",
+                        "PersistentVolume",
+                        "StorageClass",
+                    ]
+
+                    for doc in documents:
+                        if doc is None:
+                            continue
+                        if not isinstance(doc, dict):
+                            processed_docs.append(doc)
+                            continue
+
+                        kind = doc.get("kind", "")
+                        metadata = doc.get("metadata", {})
+
+                        # Skip cluster-scoped resources
+                        if kind in cluster_scoped_kinds:
+                            processed_docs.append(doc)
+                            continue
+
+                        # Add namespace if not present
+                        if isinstance(metadata, dict) and "namespace" not in metadata:
+                            metadata["namespace"] = self.namespace
+                            doc["metadata"] = metadata
+
+                        processed_docs.append(doc)
+
+                    # Reconstruct YAML
+                    output_content = ""
+                    for doc in processed_docs:
+                        output_content += yaml.dump(doc)
+                        output_content += "---\n"
+
                 # Write output to manifests directory
                 manifests_dir = self.manifests_dir()
                 if isinstance(manifests_dir, str):
@@ -154,7 +199,7 @@ class HelmChart(Template):
 
                 print(f"Writing helm output to {output_file}")
                 with open(output_file, "w") as f:
-                    f.write(result.stdout)
+                    f.write(output_content)
             except Exception as e:
                 raise RuntimeError(f"Helm template failed: {e}")
 

@@ -459,24 +459,36 @@ class KubernetesResource(Template):
         if self.enable_argocd() and self.application_repo_url():
             self._write_application()
 
+    def extra_manifests(self) -> list[dict]:
+        """
+        Return any additional manifests that should be rendered.
+
+        Override this method in subclasses to add extra manifests beyond those
+        added via helper methods or the manifests() method.
+        """
+        return []
+
     def render_manifests(self) -> None:
         """
         Render all Kubernetes manifests.
         Each manifest will be written to a separate file named after its metadata.name.
         """
         manifests = self.manifests()
-        if not manifests:
+        extra_manifests = self.extra_manifests()
+        all_manifests = manifests + extra_manifests
+
+        if not all_manifests:
             print(f"No manifests for {self.name}")
             return
 
-        print(f"\nRendering {len(manifests)} manifests for {self.name}...")
+        print(f"\nRendering {len(all_manifests)} manifests for {self.name}...")
         manifests_dir = self.manifests_dir()
         if isinstance(manifests_dir, str):
             manifests_dir = Path(manifests_dir)
         output_dir = manifests_dir / self.name
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        for manifest in manifests:
+        for manifest in all_manifests:
             if not manifest.get("metadata") or not manifest["metadata"].get("name"):
                 raise ValueError(f"Manifest {manifest} has no metadata or name")
 

@@ -83,27 +83,220 @@ def _contains_crd(yaml_file: Path) -> bool:
     return False
 
 
-def _categorize_yaml_files(yaml_files: List[Path]) -> Tuple[List[Path], List[Path]]:
+def _extract_crds_from_yaml(yaml_file: Path) -> Optional[Path]:
     """
-    Categorize YAML files into CRDs and non-CRDs.
+    Extract CRDs from a multi-document YAML file to a temporary file.
+
+    Args:
+        yaml_file: Path to the YAML file
+
+    Returns:
+        Path to temporary file with CRDs only, or None if no CRDs found
+    """
+    import tempfile
+
+    try:
+        with open(yaml_file, "r") as f:
+            documents = list(yaml.safe_load_all(f))
+
+        crd_docs = []
+        for doc in documents:
+            if doc is None:
+                continue
+            if isinstance(doc, dict) and doc.get("kind") == "CustomResourceDefinition":
+                crd_docs.append(doc)
+
+        if not crd_docs:
+            return None
+
+        # Create temporary file with CRDs only
+        temp_file = tempfile.NamedTemporaryFile(
+            mode="w", suffix=".yaml", delete=False, dir=yaml_file.parent
+        )
+        for doc in crd_docs:
+            yaml.dump(doc, temp_file)
+            temp_file.write("---\n")
+        temp_file.close()
+
+        return Path(temp_file.name)
+    except (yaml.YAMLError, IOError, OSError):
+        return None
+
+
+def _contains_namespace(yaml_file: Path) -> bool:
+    """
+    Check if a YAML file contains a Namespace resource.
+
+    Args:
+        yaml_file: Path to the YAML file to check
+
+    Returns:
+        True if the file contains at least one Namespace, False otherwise
+    """
+    try:
+        with open(yaml_file, "r") as f:
+            documents = list(yaml.safe_load_all(f))
+
+            for doc in documents:
+                if doc is None:
+                    continue
+                if isinstance(doc, dict) and doc.get("kind") == "Namespace":
+                    return True
+    except (yaml.YAMLError, IOError, OSError):
+        return False
+
+    return False
+
+
+def _categorize_yaml_files(yaml_files: List[Path]) -> Tuple[List[Path], List[Path], List[Path]]:
+    """
+    Categorize YAML files into CRDs, Namespaces, and other resources.
+
+    Files that contain CRDs are categorized as CRD files, but if they also contain
+    namespace-scoped resources, they need to be applied after namespaces exist.
 
     Args:
         yaml_files: List of YAML file paths to categorize
 
     Returns:
-        Tuple of (crd_files, non_crd_files) - both lists are sorted
+        Tuple of (crd_only_files, namespace_files, other_files) - all lists are sorted
+        Note: Files with both CRDs and namespace-scoped resources go in other_files
     """
-    crd_files: List[Path] = []
-    non_crd_files: List[Path] = []
+    crd_only_files: List[Path] = []
+    namespace_files: List[Path] = []
+    other_files: List[Path] = []
 
     for yaml_file in yaml_files:
-        if _contains_crd(yaml_file):
-            crd_files.append(yaml_file)
-        else:
-            non_crd_files.append(yaml_file)
+        has_crd = _contains_crd(yaml_file)
+        has_namespace = _contains_namespace(yaml_file)
 
-    # Sort both lists for consistent ordering
-    return sorted(crd_files), sorted(non_crd_files)
+        if has_namespace:
+            namespace_files.append(yaml_file)
+        elif has_crd:
+            # Check if file also has namespace-scoped resources
+            # If it does, put it in other_files so it's applied after namespaces
+            file_namespace = _extract_namespace_from_yaml(yaml_file)
+            if file_namespace:
+                # File has CRDs but also namespace-scoped resources
+                other_files.append(yaml_file)
+            else:
+                # File only has CRDs (cluster-scoped)
+                crd_only_files.append(yaml_file)
+        else:
+            other_files.append(yaml_file)
+
+    # Sort all lists for consistent ordering
+    return sorted(crd_only_files), sorted(namespace_files), sorted(other_files)
+
+
+def _extract_namespace_from_yaml(yaml_file: Path) -> Optional[str]:
+    """
+    Extract namespace from a YAML file by parsing the first resource's metadata.
+
+    Args:
+        yaml_file: Path to the YAML file
+
+    Returns:
+        Namespace string if found, None otherwise (for cluster-scoped resources)
+    """
+    try:
+        with open(yaml_file, "r") as f:
+            documents = list(yaml.safe_load_all(f))
+
+            for doc in documents:
+                if doc is None or not isinstance(doc, dict):
+                    continue
+
+                # Check if this is a cluster-scoped resource
+                kind = doc.get("kind", "")
+                cluster_scoped_kinds = [
+                    "CustomResourceDefinition",
+                    "ClusterRole",
+                    "ClusterRoleBinding",
+                    "Namespace",
+                    "PersistentVolume",
+                    "StorageClass",
+                ]
+
+                if kind in cluster_scoped_kinds:
+                    continue  # Cluster-scoped, no namespace
+
+                # Extract namespace from metadata
+                metadata = doc.get("metadata", {})
+                if isinstance(metadata, dict):
+                    namespace = metadata.get("namespace")
+                    if namespace:
+                        return namespace
+    except (yaml.YAMLError, IOError, OSError):
+        # If we can't parse, return None and let kubectl handle it
+        pass
+
+    return None
+
+
+def _extract_namespace_resource_name(yaml_file: Path) -> Optional[str]:
+    """
+    Extract the name of a Namespace resource from a YAML file.
+
+    Args:
+        yaml_file: Path to the YAML file
+
+    Returns:
+        Namespace name if the file contains a Namespace resource, None otherwise
+    """
+    try:
+        with open(yaml_file, "r") as f:
+            documents = list(yaml.safe_load_all(f))
+
+            for doc in documents:
+                if doc is None or not isinstance(doc, dict):
+                    continue
+                if doc.get("kind") == "Namespace":
+                    metadata = doc.get("metadata", {})
+                    if isinstance(metadata, dict):
+                        return metadata.get("name")
+    except (yaml.YAMLError, IOError, OSError):
+        pass
+
+    return None
+
+
+def _filter_manifests_by_namespace(
+    yaml_files: List[Path], namespace_filter: Optional[str]
+) -> List[Path]:
+    """
+    Filter manifest files by namespace if a namespace filter is provided.
+
+    Args:
+        yaml_files: List of YAML file paths
+        namespace_filter: Optional namespace to filter by
+
+    Returns:
+        Filtered list of YAML files that match the namespace (or all if no filter)
+    """
+    if namespace_filter is None:
+        return yaml_files
+
+    filtered_files: List[Path] = []
+    for yaml_file in yaml_files:
+        file_namespace = _extract_namespace_from_yaml(yaml_file)
+        namespace_resource_name = _extract_namespace_resource_name(yaml_file)
+
+        # Include if:
+        # 1. File namespace matches filter
+        # 2. File contains a Namespace resource with name matching the filter
+        # 3. File has no namespace and is not a Namespace resource (cluster-scoped like CRDs)
+        if file_namespace == namespace_filter:
+            filtered_files.append(yaml_file)
+        elif namespace_resource_name == namespace_filter:
+            # This is a Namespace resource with the matching name
+            filtered_files.append(yaml_file)
+        elif file_namespace is None and namespace_resource_name is None:
+            # Cluster-scoped resource that's not a Namespace (e.g., CRD, ClusterRole)
+            filtered_files.append(yaml_file)
+        # Exclude: Namespace resources with different names, or namespace-scoped resources in different namespaces
+
+    return filtered_files
 
 
 def render_templates(manifests_dir: Optional[Path] = None) -> None:
@@ -202,25 +395,73 @@ def apply_manifests(namespace: Optional[str] = None, manifests_dir: Optional[Pat
                 "Templates must be rendered before applying."
             )
 
-        # Categorize files into CRDs and non-CRDs
-        crd_files, non_crd_files = _categorize_yaml_files(yaml_files)
+        # Filter manifests by namespace if provided
+        if namespace:
+            yaml_files = _filter_manifests_by_namespace(yaml_files, namespace)
+            if not yaml_files:
+                print(f"\nNo manifests found matching namespace: {namespace}")
+                return
+
+        # Categorize files into CRD-only files, Namespaces, and other resources
+        # Files with both CRDs and namespace-scoped resources go in other_files
+        crd_only_files, namespace_files, other_files = _categorize_yaml_files(yaml_files)
+
+        # Extract CRDs from files that have both CRDs and other resources
+        # These need to be applied first
+        crd_extracted_files = []
+        files_to_remove = []
+        for yaml_file in other_files:
+            if _contains_crd(yaml_file):
+                crd_file = _extract_crds_from_yaml(yaml_file)
+                if crd_file:
+                    crd_extracted_files.append(crd_file)
+                    # Note: We'll still apply the original file later for non-CRD resources
 
         print(f"\nApplying manifests from {manifests_dir_path}")
         if namespace:
-            print(f"Using namespace: {namespace}")
+            print(f"Filtering to namespace: {namespace}")
         print(f"Found {len(yaml_files)} manifest file(s)")
-        if crd_files:
-            print(f"  - {len(crd_files)} CRD file(s) will be applied first")
-            print(f"  - {len(non_crd_files)} other resource file(s)")
+        total_crds = len(crd_only_files) + len(crd_extracted_files)
+        if total_crds > 0:
+            print(f"  - {total_crds} CRD file(s) will be applied first")
+        if namespace_files:
+            print(f"  - {len(namespace_files)} Namespace file(s) will be applied next")
+        if other_files:
+            print(f"  - {len(other_files)} other resource file(s)")
 
-        # Apply CRDs first, then other resources
+        # Apply in order: CRDs first (from CRD-only files and extracted from mixed files),
+        # then Namespaces, then other resources
+        # Namespaces must be created before any namespace-scoped resources
+        # Each manifest is applied to its own namespace as specified in the file
         applied_count = 0
-        for yaml_file in crd_files + non_crd_files:
+
+        # First apply all CRDs (cluster-scoped, no namespace needed)
+        for yaml_file in crd_only_files + crd_extracted_files:
             cmd = ["kubectl", "apply", "-f", str(yaml_file)]
-            # Note: CRDs are cluster-scoped, so --namespace flag is ignored for them
-            # but we still pass it for consistency (kubectl will ignore it for cluster-scoped resources)
-            if namespace:
-                cmd.extend(["--namespace", namespace])
+            try:
+                executor.run(cmd, check=True, text=True, capture_output=True)
+                applied_count += 1
+            except Exception as e:
+                error_msg = str(e)
+                print(f"✗ Failed to apply {yaml_file}: {error_msg}", file=sys.stderr)
+                raise RuntimeError(f"kubectl apply failed for {yaml_file}: {error_msg}") from e
+
+        # Then apply Namespaces (must exist before namespace-scoped resources)
+        for yaml_file in namespace_files:
+            cmd = ["kubectl", "apply", "-f", str(yaml_file)]
+            try:
+                executor.run(cmd, check=True, text=True, capture_output=True)
+                applied_count += 1
+            except Exception as e:
+                error_msg = str(e)
+                print(f"✗ Failed to apply {yaml_file}: {error_msg}", file=sys.stderr)
+                raise RuntimeError(f"kubectl apply failed for {yaml_file}: {error_msg}") from e
+
+        # Finally apply other resources (which may depend on namespaces existing)
+        for yaml_file in other_files:
+            cmd = ["kubectl", "apply", "-f", str(yaml_file)]
+            # Don't force namespace - let each manifest use its own namespace from metadata
+            # kubectl will automatically use the namespace from the manifest file
 
             try:
                 executor.run(cmd, check=True, text=True, capture_output=True)
