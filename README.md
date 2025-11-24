@@ -1,5 +1,7 @@
 # Kubeman
 
+![PyPI - Version](https://img.shields.io/pypi/v/kubeman)
+
 A Python library for rendering Helm charts and Kubernetes resources with optional ArgoCD Application generation. Features an abstract Template base class for consistent template management.
 
 ## Features
