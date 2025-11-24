@@ -10,6 +10,12 @@ The example includes:
 - **Sample Spark Application** (SparkPi) that calculates π using Monte Carlo method
 - **Resource limits** configured for production-like workloads
 
+### Resource Visualization
+
+A detailed visualization of all Kubernetes resources and their relationships:
+
+![Resource Visualization](docs/visualization.png)
+
 ## Prerequisites
 
 1. **kubectl** configured to access your Kubernetes cluster

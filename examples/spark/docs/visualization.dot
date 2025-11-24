@@ -1,0 +1,67 @@
+digraph G {
+    rankdir="TB";
+    node [fontname="Arial"];
+
+    subgraph cluster_cluster_scoped {
+        label="Namespace: cluster-scoped";
+        style="filled";
+        color="#E8F4F8";
+        fontcolor="black";
+
+        clusterrole_spark_operator [label="ClusterRole
+spark-operator
+[spark-operator]", style="filled", fillcolor="#F0E5FF", shape="hexagon"];
+        clusterrolebinding_spark_operator [label="ClusterRoleBinding
+spark-operator
+[spark-operator]", style="filled", fillcolor="#F5E5FF", shape="parallelogram"];
+        namespace_spark [label="Namespace
+spark
+[spark-pi]", style="filled", fillcolor="#E8F4F8", shape="ellipse"];
+    }
+
+    subgraph cluster_spark {
+        label="Namespace: spark";
+        style="filled";
+        color="#FFF5E5";
+        fontcolor="black";
+
+        serviceaccount_spark_operator_spark_spark [label="ServiceAccount
+spark-operator-spark
+[spark-operator]", style="filled", fillcolor="#FFF5E5", shape="ellipse"];
+        role_spark_role_spark [label="Role
+spark-role
+[spark-operator]", style="filled", fillcolor="#F0E5FF", shape="hexagon"];
+        rolebinding_spark_spark [label="RoleBinding
+spark
+[spark-operator]", style="filled", fillcolor="#F5E5FF", shape="parallelogram"];
+        deployment_spark_operator_spark [label="Deployment
+spark-operator
+[spark-operator]", style="filled", fillcolor="#FFE5B4", shape="box"];
+        serviceaccount_spark_operator_spark [label="ServiceAccount
+spark-operator
+[spark-operator]", style="filled", fillcolor="#FFF5E5", shape="ellipse"];
+        rolebinding_spark_role_binding_spark [label="RoleBinding
+spark-role-binding
+[spark-pi]", style="filled", fillcolor="#F5E5FF", shape="parallelogram"];
+        sparkapplication_spark_pi_spark [label="SparkApplication
+spark-pi
+[spark-pi]", style="filled", fillcolor="#FFFFFF", shape="box"];
+        role_spark_role_spark [label="Role
+spark-role
+[spark-pi]", style="filled", fillcolor="#F0E5FF", shape="hexagon"];
+        serviceaccount_spark_spark [label="ServiceAccount
+spark
+[spark-pi]", style="filled", fillcolor="#FFF5E5", shape="ellipse"];
+        sparkapplication_custom_pyspark_job_spark [label="SparkApplication
+custom-pyspark-job
+[custom-pyspark-job]", style="filled", fillcolor="#FFFFFF", shape="box"];
+    }
+
+    rolebinding_spark_spark -> role_spark_role_spark [label="references-role"];
+    rolebinding_spark_spark -> serviceaccount_spark_operator_spark_spark [label="binds-to"];
+    deployment_spark_operator_spark -> serviceaccount_spark_operator_spark [label="uses-serviceaccount"];
+    clusterrolebinding_spark_operator -> clusterrole_spark_operator [label="references-role"];
+    clusterrolebinding_spark_operator -> serviceaccount_spark_operator_spark [label="binds-to"];
+    rolebinding_spark_role_binding_spark -> role_spark_role_spark [label="references-role"];
+    rolebinding_spark_role_binding_spark -> serviceaccount_spark_spark [label="binds-to"];
+}

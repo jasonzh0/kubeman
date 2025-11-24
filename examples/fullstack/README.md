@@ -25,6 +25,12 @@ The example includes:
 └─────────────┘     └─────────────┘     └─────────────┘
 ```
 
+### Resource Visualization
+
+A detailed visualization of all Kubernetes resources and their relationships:
+
+![Resource Visualization](docs/visualization.png)
+
 ## Prerequisites
 
 1. **kubectl** configured to access your Kubernetes cluster

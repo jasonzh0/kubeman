@@ -16,6 +16,7 @@ from kubeman.register import TemplateRegistry
 from kubeman.template import Template
 from kubeman.executor import get_executor
 from kubeman.resource_utils import CLUSTER_SCOPED_KINDS
+from kubeman.visualize import generate_visualization
 
 
 def load_templates_file(file_path: str) -> None:
@@ -29,7 +30,43 @@ def load_templates_file(file_path: str) -> None:
         FileNotFoundError: If the file doesn't exist
         ImportError: If the file cannot be imported
     """
-    file_path_obj = Path(file_path).resolve()
+    file_path_obj = Path(file_path)
+
+    # If path is absolute, use it directly
+    if file_path_obj.is_absolute():
+        file_path_obj = file_path_obj.resolve()
+    else:
+        # Try resolving relative to current directory first
+        resolved = file_path_obj.resolve()
+        if resolved.exists():
+            file_path_obj = resolved
+        else:
+            # If not found, try to find project root and resolve relative to that
+            # Look for common project root indicators
+            current = Path.cwd()
+            project_root = None
+
+            # Walk up the directory tree looking for project root indicators
+            for parent in [current] + list(current.parents):
+                if (
+                    (parent / "pyproject.toml").exists()
+                    or (parent / "setup.py").exists()
+                    or (parent / ".git").exists()
+                    or (parent / "kubeman").is_dir()
+                ):
+                    project_root = parent
+                    break
+
+            if project_root:
+                candidate = (project_root / file_path).resolve()
+                if candidate.exists():
+                    file_path_obj = candidate
+                else:
+                    # Last attempt: try resolving from current directory as-is
+                    file_path_obj = resolved
+            else:
+                # No project root found, use resolved path
+                file_path_obj = resolved
 
     if not file_path_obj.exists():
         raise FileNotFoundError(f"Templates file not found: {file_path_obj}")
@@ -760,6 +797,74 @@ def cmd_plan(args: argparse.Namespace) -> None:
         sys.exit(1)
 
 
+def cmd_visualize(args: argparse.Namespace) -> None:
+    """Handle the visualize subcommand."""
+    try:
+        TemplateRegistry.clear()
+
+        # Always skip builds and loads for visualize command
+        TemplateRegistry.set_skip_builds(True)
+        TemplateRegistry.set_skip_loads(True)
+
+        # Load templates file (imports trigger registration)
+        templates_file = args.file or "./kubeman.py"
+        load_templates_file(templates_file)
+
+        # Get optional output directory
+        output_dir = None
+        if hasattr(args, "output_dir") and args.output_dir is not None:
+            try:
+                output_dir = Path(args.output_dir).resolve()
+            except (TypeError, AttributeError):
+                output_dir = None
+
+        # Render templates to generate manifests
+        template_names = render_templates(manifests_dir=output_dir)
+        print("\n✓ Templates rendered successfully")
+
+        # Get manifests directory
+        manifests_dir_path = Template.manifests_dir()
+        if isinstance(manifests_dir_path, str):
+            manifests_dir_path = Path(manifests_dir_path)
+
+        if not manifests_dir_path.exists():
+            raise RuntimeError(
+                f"Manifests directory not found: {manifests_dir_path}. "
+                "Templates must be rendered before visualization."
+            )
+
+        # Generate visualization (only for templates from this kubeman.py file)
+        show_crds = getattr(args, "show_crds", False)
+        print(f"\nGenerating visualization from {manifests_dir_path}...")
+        print(f"Filtering to templates: {', '.join(template_names)}")
+        if show_crds:
+            print("Including CustomResourceDefinitions in visualization")
+        dot_content = generate_visualization(
+            manifests_dir_path, template_names=template_names, show_crds=show_crds
+        )
+
+        # Write output
+        output_file = getattr(args, "output", None)
+        if output_file:
+            output_path = Path(output_file).resolve()
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(output_path, "w") as f:
+                f.write(dot_content)
+            print(f"✓ Visualization written to {output_path}")
+            print(f"\nTo render the diagram, run:")
+            print(f"  dot -Tpng {output_path} -o {output_path.stem}.png")
+            print(f"  dot -Tsvg {output_path} -o {output_path.stem}.svg")
+        else:
+            # Write to stdout
+            print("\n" + "=" * 60)
+            print(dot_content)
+            print("=" * 60)
+
+    except (FileNotFoundError, ImportError, ValueError, RuntimeError) as e:
+        print(f"✗ Error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
 def main() -> None:
     """Main entry point for kubeman CLI."""
     parser = argparse.ArgumentParser(
@@ -770,6 +875,7 @@ Examples:
   kubeman render --file examples/kafka/kubeman.py
   kubeman apply --file examples/kafka/kubeman.py
   kubeman plan --file examples/kafka/kubeman.py
+  kubeman visualize --file examples/kafka/kubeman.py --output diagram.dot
   kubeman render
   kubeman apply
   kubeman plan --verbose
@@ -845,6 +951,35 @@ The kubeman.py file should import template modules to trigger registration via
         help="Show detailed output including file paths and template names",
     )
     plan_parser.set_defaults(func=cmd_plan)
+
+    # Visualize subcommand
+    visualize_parser = subparsers.add_parser(
+        "visualize",
+        help="Generate Graphviz DOT diagram showing resource hierarchy and relationships",
+    )
+    visualize_parser.add_argument(
+        "--file",
+        help="Path to kubeman.py file (defaults to ./kubeman.py)",
+    )
+    visualize_parser.add_argument(
+        "--output-dir",
+        help="Output directory for manifests (defaults to ./manifests or MANIFESTS_DIR env var)",
+    )
+    visualize_parser.add_argument(
+        "--output",
+        help="Output file for DOT diagram (defaults to stdout)",
+    )
+    visualize_parser.add_argument(
+        "--skip-build",
+        action="store_true",
+        help="Skip Docker image build steps during template registration (ignored for visualize, always skipped)",
+    )
+    visualize_parser.add_argument(
+        "--show-crds",
+        action="store_true",
+        help="Include CustomResourceDefinitions in the visualization (hidden by default)",
+    )
+    visualize_parser.set_defaults(func=cmd_visualize)
 
     args = parser.parse_args()
 

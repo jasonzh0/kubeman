@@ -12,6 +12,12 @@ The example includes:
 - **Resource limits** configured for production-like workloads
 - **Stock Price Processing**: Producer and consumer services for processing live stock prices
 
+### Resource Visualization
+
+A detailed visualization of all Kubernetes resources and their relationships:
+
+![Resource Visualization](docs/visualization.png)
+
 ## Prerequisites
 
 1. **kubectl** configured to access your Kubernetes cluster

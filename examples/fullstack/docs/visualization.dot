@@ -1,0 +1,79 @@
+digraph G {
+    rankdir="TB";
+    node [fontname="Arial"];
+
+    subgraph cluster_cluster_scoped {
+        label="Namespace: cluster-scoped";
+        style="filled";
+        color="#E8F4F8";
+        fontcolor="black";
+
+        namespace_fullstack [label="Namespace
+fullstack
+[postgres-db]", style="filled", fillcolor="#E8F4F8", shape="ellipse"];
+    }
+
+    subgraph cluster_fullstack {
+        label="Namespace: fullstack";
+        style="filled";
+        color="#FFF5E5";
+        fontcolor="black";
+
+        configmap_frontend_config_fullstack [label="ConfigMap
+frontend-config
+[frontend-app]", style="filled", fillcolor="#E5FFE5", shape="note"];
+        deployment_frontend_fullstack [label="Deployment
+frontend
+[frontend-app]", style="filled", fillcolor="#FFE5B4", shape="box"];
+        ingress_frontend_fullstack [label="Ingress
+frontend
+[frontend-app]", style="filled", fillcolor="#E5FFF5", shape="trapezium"];
+        service_frontend_fullstack [label="Service
+frontend
+[frontend-app]", style="filled", fillcolor="#B4E5FF", shape="diamond"];
+        configmap_postgres_init_sql_fullstack [label="ConfigMap
+postgres-init-sql
+[postgres-db]", style="filled", fillcolor="#E5FFE5", shape="note"];
+        deployment_postgres_fullstack [label="Deployment
+postgres
+[postgres-db]", style="filled", fillcolor="#FFE5B4", shape="box"];
+        configmap_postgres_config_fullstack [label="ConfigMap
+postgres-config
+[postgres-db]", style="filled", fillcolor="#E5FFE5", shape="note"];
+        persistentvolumeclaim_postgres_pvc_fullstack [label="PersistentVolumeClaim
+postgres-pvc
+[postgres-db]", style="filled", fillcolor="#E5E5FF", shape="cylinder"];
+        service_postgres_fullstack [label="Service
+postgres
+[postgres-db]", style="filled", fillcolor="#B4E5FF", shape="diamond"];
+        job_postgres_init_fullstack [label="Job
+postgres-init
+[postgres-db]", style="filled", fillcolor="#FFE5B4", shape="box"];
+        secret_postgres_secret_fullstack [label="Secret
+postgres-secret
+[postgres-db]", style="filled", fillcolor="#FFE5E5", shape="note"];
+        configmap_backend_config_fullstack [label="ConfigMap
+backend-config
+[backend-api]", style="filled", fillcolor="#E5FFE5", shape="note"];
+        service_backend_fullstack [label="Service
+backend
+[backend-api]", style="filled", fillcolor="#B4E5FF", shape="diamond"];
+        deployment_backend_fullstack [label="Deployment
+backend
+[backend-api]", style="filled", fillcolor="#FFE5B4", shape="box"];
+    }
+
+    deployment_frontend_fullstack -> configmap_frontend_config_fullstack [label="uses-configmap"];
+    ingress_frontend_fullstack -> service_frontend_fullstack [label="routes-to"];
+    service_frontend_fullstack -> deployment_frontend_fullstack [label="selects"];
+    deployment_postgres_fullstack -> configmap_postgres_config_fullstack [label="uses-configmap"];
+    deployment_postgres_fullstack -> configmap_postgres_config_fullstack [label="uses-configmap"];
+    deployment_postgres_fullstack -> secret_postgres_secret_fullstack [label="uses-secret"];
+    deployment_postgres_fullstack -> persistentvolumeclaim_postgres_pvc_fullstack [label="uses-pvc"];
+    service_postgres_fullstack -> deployment_postgres_fullstack [label="selects"];
+    job_postgres_init_fullstack -> secret_postgres_secret_fullstack [label="uses-secret"];
+    job_postgres_init_fullstack -> configmap_postgres_init_sql_fullstack [label="uses-configmap"];
+    service_backend_fullstack -> deployment_backend_fullstack [label="selects"];
+    deployment_backend_fullstack -> configmap_backend_config_fullstack [label="uses-configmap"];
+    deployment_backend_fullstack -> configmap_backend_config_fullstack [label="uses-configmap"];
+}
