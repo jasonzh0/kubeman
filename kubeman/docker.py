@@ -34,8 +34,11 @@ class DockerManager:
 
         if registry:
             self.registry = registry
-        else:
+        elif self.project_id:
             self.registry = f"{region}-docker.pkg.dev/{self.project_id}/{repository_name}"
+        else:
+            # No registry configured - will use local image names
+            self.registry = ""
         self.repository = Config.github_repository()
 
     def build_image(
@@ -54,10 +57,14 @@ class DockerManager:
             dockerfile: Optional Dockerfile name (defaults to 'Dockerfile')
 
         Returns:
-            Full image name including registry and tag
+            Full image name including registry and tag (or local name if no registry)
         """
         tag = tag or "latest"
-        image_name = f"{self.registry}/{component}:{tag}"
+        if self.registry:
+            image_name = f"{self.registry}/{component}:{tag}"
+        else:
+            # Use local image name when no registry is configured
+            image_name = f"{component}:{tag}"
 
         context = Path(context_path).resolve()
         dockerfile_path = context / (dockerfile or "Dockerfile")
@@ -84,7 +91,15 @@ class DockerManager:
 
         Returns:
             Full image name including registry and tag
+
+        Raises:
+            ValueError: If DOCKER_PROJECT_ID is not set (required for pushing)
         """
+        if not self.project_id:
+            raise ValueError(
+                "Required environment variable DOCKER_PROJECT_ID is not set. "
+                "DOCKER_PROJECT_ID is required when pushing images to a registry."
+            )
         tag = tag or "latest"
         image_name = f"{self.registry}/{component}:{tag}"
 
@@ -106,6 +121,9 @@ class DockerManager:
             context_path: Path to the Docker context (str or Path)
             tag: Optional specific tag
             dockerfile: Optional Dockerfile name (defaults to 'Dockerfile')
+
+        Raises:
+            ValueError: If DOCKER_PROJECT_ID is not set (required for pushing)
         """
         image_name = self.build_image(component, context_path, tag, dockerfile)
         self.push_image(component, tag)

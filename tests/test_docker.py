@@ -22,12 +22,11 @@ class TestDockerManager:
         assert manager.project_id == "env-project"
 
     def test_init_no_project_id(self, monkeypatch):
-        """Test that initialization without project_id raises error."""
+        """Test that initialization without project_id is allowed (only required for pushing)."""
         monkeypatch.delenv("DOCKER_PROJECT_ID", raising=False)
-        with pytest.raises(
-            ValueError, match="Required environment variable DOCKER_PROJECT_ID is not set"
-        ):
-            DockerManager()
+        manager = DockerManager()
+        assert manager.project_id is None
+        assert manager.registry == ""
 
     def test_init_registry_default(self, monkeypatch):
         """Test default registry construction."""
@@ -148,6 +147,16 @@ class TestDockerManager:
         manager.executor = mock_executor
 
         with pytest.raises(subprocess.CalledProcessError):
+            manager.push_image("component")
+
+    def test_push_image_no_project_id(self, monkeypatch):
+        """Test that pushing without project_id raises error."""
+        monkeypatch.delenv("DOCKER_PROJECT_ID", raising=False)
+        manager = DockerManager()
+
+        with pytest.raises(
+            ValueError, match="Required environment variable DOCKER_PROJECT_ID is not set"
+        ):
             manager.push_image("component")
 
     def test_build_and_push(self, monkeypatch):

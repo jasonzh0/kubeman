@@ -145,17 +145,14 @@ class Config:
         return Config.get("ARGOCD_APPS_SUBDIR", "apps")
 
     @staticmethod
-    def docker_project_id() -> str:
+    def docker_project_id() -> Optional[str]:
         """
         Get the Docker registry project ID from environment.
 
         Returns:
-            Project ID
-
-        Raises:
-            ValueError: If DOCKER_PROJECT_ID is not set
+            Project ID or None if not set
         """
-        return Config.get("DOCKER_PROJECT_ID", required=True)
+        return Config.get("DOCKER_PROJECT_ID") or None
 
     @staticmethod
     def docker_region() -> str:
