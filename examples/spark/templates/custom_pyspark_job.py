@@ -93,14 +93,15 @@ class CustomPySparkJob(KubernetesResource):
 
         context_path = self.resolve_path("..")
         docker = DockerManager()
-        docker.build_image(
+        image_name = docker.build_image(
             component="custom-pyspark-job",
             context_path=context_path,
             tag="latest",
             dockerfile="Dockerfile.pyspark",
         )
+
         docker.tag_image(
-            source_image=f"{docker.registry}/custom-pyspark-job",
+            source_image=image_name,
             target_image="custom-pyspark-job",
             source_tag="latest",
         )

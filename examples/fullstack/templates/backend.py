@@ -99,14 +99,15 @@ class BackendAPI(KubernetesResource):
 
         context_path = self.resolve_path("../backend")
         docker = DockerManager()
-        docker.build_image(
+        image_name = docker.build_image(
             component="backend-api",
             context_path=context_path,
             tag="latest",
             dockerfile="Dockerfile",
         )
+
         docker.tag_image(
-            source_image=f"{docker.registry}/backend-api",
+            source_image=image_name,
             target_image="backend-api",
             source_tag="latest",
         )

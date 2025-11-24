@@ -39,8 +39,8 @@ kubeman apply
 # Or with explicit path from project root:
 kubeman apply --file examples/kafka/kubeman.py
 
-# For kind clusters, set Docker environment variables:
-DOCKER_PROJECT_ID=test-project DOCKER_REGION=us-central1 DOCKER_REPOSITORY_NAME=default \
+# For kind clusters, set Docker registry (optional, only needed for pushing images):
+DOCKER_REGISTRY=us-central1-docker.pkg.dev/test-project/default \
   kubeman apply --file examples/kafka/kubeman.py
 
 # Skip build steps if images are already built:

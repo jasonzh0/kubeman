@@ -118,14 +118,15 @@ class FrontendApp(KubernetesResource):
 
         context_path = self.resolve_path("../frontend")
         docker = DockerManager()
-        docker.build_image(
+        image_name = docker.build_image(
             component="frontend-app",
             context_path=context_path,
             tag="latest",
             dockerfile="Dockerfile",
         )
+
         docker.tag_image(
-            source_image=f"{docker.registry}/frontend-app",
+            source_image=image_name,
             target_image="frontend-app",
             source_tag="latest",
         )

@@ -39,8 +39,8 @@ kubeman apply
 # Or with explicit path from project root:
 kubeman apply --file examples/spark/kubeman.py
 
-# For kind clusters, set Docker environment variables:
-DOCKER_PROJECT_ID=test-project DOCKER_REGION=us-central1 DOCKER_REPOSITORY_NAME=default \
+# For kind clusters, set Docker registry (optional, only needed for pushing images):
+DOCKER_REGISTRY=us-central1-docker.pkg.dev/test-project/default \
   kubeman apply --file examples/spark/kubeman.py
 
 # Skip build/load steps if images are already built:
@@ -110,15 +110,15 @@ def build(self) -> None:
 
     context_path = self.resolve_path("..")
     docker = DockerManager()
-    docker.build_image(
+    image_name = docker.build_image(
         component="custom-pyspark-job",
         context_path=context_path,
         tag="latest",
         dockerfile="Dockerfile.pyspark",
     )
-    # Tag with local name for kind cluster
+
     docker.tag_image(
-        source_image=f"{docker.registry}/custom-pyspark-job",
+        source_image=image_name,
         target_image="custom-pyspark-job",
         source_tag="latest",
     )

@@ -145,34 +145,16 @@ class Config:
         return Config.get("ARGOCD_APPS_SUBDIR", "apps")
 
     @staticmethod
-    def docker_project_id() -> Optional[str]:
+    def docker_registry() -> Optional[str]:
         """
-        Get the Docker registry project ID from environment.
+        Get the Docker registry URL from environment.
+
+        Set DOCKER_REGISTRY to the full registry URL (e.g., "us-central1-docker.pkg.dev/my-project/my-repo").
 
         Returns:
-            Project ID or None if not set
+            Full registry URL or None if not configured
         """
-        return Config.get("DOCKER_PROJECT_ID") or None
-
-    @staticmethod
-    def docker_region() -> str:
-        """
-        Get the Docker registry region from environment.
-
-        Returns:
-            Region (defaults to "us-central1")
-        """
-        return Config.get("DOCKER_REGION", "us-central1")
-
-    @staticmethod
-    def docker_repository_name() -> str:
-        """
-        Get the Docker repository name from environment.
-
-        Returns:
-            Repository name (defaults to "default")
-        """
-        return Config.get("DOCKER_REPOSITORY_NAME", "default")
+        return Config.get("DOCKER_REGISTRY") or None
 
     @staticmethod
     def github_repository() -> str:

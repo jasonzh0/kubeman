@@ -293,7 +293,6 @@ class MyApp(KubernetesResource):
             tag="latest",
             dockerfile="Dockerfile.prod"  # Optional: custom Dockerfile name
         )
-        # Tag with local name for kind clusters
         docker.tag_image(
             source_image=f"{docker.registry}/my-app",
             target_image="my-app",
@@ -522,11 +521,12 @@ The `DockerManager` class helps build and push Docker images:
 ```python
 from kubeman import DockerManager
 
-# Initialize with project ID (or set DOCKER_PROJECT_ID env var)
-docker = DockerManager(
-    project_id="my-project",
-    repository_name="my-repo"  # Optional, defaults to "default"
-)
+# Initialize (uses DOCKER_REGISTRY environment variable if set)
+# Set DOCKER_REGISTRY="us-central1-docker.pkg.dev/my-project/my-repo" to use a registry
+docker = DockerManager()
+
+# Or pass registry directly
+docker = DockerManager(registry="us-central1-docker.pkg.dev/my-project/my-repo")
 
 # Build an image
 image_name = docker.build_image(
@@ -543,7 +543,6 @@ image_name = docker.build_image(
     dockerfile="Dockerfile.prod"  # Optional: defaults to "Dockerfile"
 )
 
-# Tag an image (useful for creating local tags from registry images)
 docker.tag_image(
     source_image=f"{docker.registry}/frontend",
     target_image="frontend",
@@ -585,11 +584,11 @@ ArgoCD Application generation is opt-in and disabled by default. To enable:
 
 You can also enable ArgoCD by overriding the `enable_argocd()` method in your template class to return `True`.
 
-### Required for Docker Operations
-- `DOCKER_PROJECT_ID` - Registry project ID (or pass to `DockerManager` constructor)
-- `DOCKER_REGION` - Registry region (defaults to "us-central1")
-- `DOCKER_REPOSITORY_NAME` - Docker repository name (defaults to "default")
+### Required for Docker Operations (when pushing images)
+- `DOCKER_REGISTRY` - Full registry URL (e.g., "us-central1-docker.pkg.dev/my-project/my-repo")
 - `GITHUB_REPOSITORY` - GitHub repository name (optional)
+
+**Note**: `DOCKER_REGISTRY` is only required when pushing images. Building images works without it (uses local image names).
 
 ## Complete Example
 

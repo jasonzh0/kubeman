@@ -95,14 +95,15 @@ class StockPriceProducer(KubernetesResource):
 
         context_path = self.resolve_path("..")
         docker = DockerManager()
-        docker.build_image(
+        image_name = docker.build_image(
             component="stock-price-producer",
             context_path=context_path,
             tag="latest",
             dockerfile="Dockerfile.producer",
         )
+
         docker.tag_image(
-            source_image=f"{docker.registry}/stock-price-producer",
+            source_image=image_name,
             target_image="stock-price-producer",
             source_tag="latest",
         )

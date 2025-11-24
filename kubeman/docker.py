@@ -14,31 +14,30 @@ class DockerManager:
     def __init__(
         self,
         registry: Optional[str] = None,
-        project_id: Optional[str] = None,
-        repository_name: Optional[str] = None,
         executor: Optional[CommandExecutor] = None,
     ):
         """
         Initialize the DockerManager.
 
         Args:
-            registry: Custom registry URL (overrides default registry construction)
-            project_id: Registry project ID (defaults to DOCKER_PROJECT_ID env var)
-            repository_name: Docker repository name (defaults to DOCKER_REPOSITORY_NAME env var)
+            registry: Custom registry URL (overrides DOCKER_REGISTRY environment variable)
             executor: CommandExecutor instance (defaults to global executor)
+
+        Note:
+            Registry can be set via:
+            - DOCKER_REGISTRY environment variable (e.g., "us-central1-docker.pkg.dev/my-project/my-repo")
+            - Or passed directly as registry parameter
         """
         self.executor = executor or get_executor()
-        self.project_id = project_id or Config.docker_project_id()
-        repository_name = repository_name or Config.docker_repository_name()
-        region = Config.docker_region()
 
+        # Priority: explicit registry parameter > DOCKER_REGISTRY env var
         if registry:
             self.registry = registry
-        elif self.project_id:
-            self.registry = f"{region}-docker.pkg.dev/{self.project_id}/{repository_name}"
         else:
-            # No registry configured - will use local image names
-            self.registry = ""
+            # Get registry from environment
+            env_registry = Config.docker_registry()
+            self.registry = env_registry or ""
+
         self.repository = Config.github_repository()
 
     def build_image(
@@ -93,12 +92,13 @@ class DockerManager:
             Full image name including registry and tag
 
         Raises:
-            ValueError: If DOCKER_PROJECT_ID is not set (required for pushing)
+            ValueError: If registry is not configured (required for pushing)
         """
-        if not self.project_id:
+        if not self.registry:
             raise ValueError(
-                "Required environment variable DOCKER_PROJECT_ID is not set. "
-                "DOCKER_PROJECT_ID is required when pushing images to a registry."
+                "Docker registry is not configured. "
+                "Set DOCKER_REGISTRY environment variable (e.g., 'us-central1-docker.pkg.dev/my-project/my-repo') "
+                "to push images to a registry."
             )
         tag = tag or "latest"
         image_name = f"{self.registry}/{component}:{tag}"
@@ -123,7 +123,7 @@ class DockerManager:
             dockerfile: Optional Dockerfile name (defaults to 'Dockerfile')
 
         Raises:
-            ValueError: If DOCKER_PROJECT_ID is not set (required for pushing)
+            ValueError: If registry is not configured (required for pushing)
         """
         image_name = self.build_image(component, context_path, tag, dockerfile)
         self.push_image(component, tag)
