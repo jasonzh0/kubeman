@@ -63,6 +63,7 @@ backend
 [backend-api]", style="filled", fillcolor="#FFE5B4", shape="box"];
     }
 
+    deployment_frontend_fullstack -> service_backend_fullstack [label="connects-to-via-config\nbackend:8000"];
     deployment_frontend_fullstack -> configmap_frontend_config_fullstack [label="uses-configmap"];
     ingress_frontend_fullstack -> service_frontend_fullstack [label="routes-to"];
     service_frontend_fullstack -> deployment_frontend_fullstack [label="selects"];
@@ -73,7 +74,10 @@ backend
     service_postgres_fullstack -> deployment_postgres_fullstack [label="selects"];
     job_postgres_init_fullstack -> secret_postgres_secret_fullstack [label="uses-secret"];
     job_postgres_init_fullstack -> configmap_postgres_init_sql_fullstack [label="uses-configmap"];
+    deployment_backend_fullstack -> service_postgres_fullstack [label="connects-to-via-config\npostgres:5432"];
     service_backend_fullstack -> deployment_backend_fullstack [label="selects"];
     deployment_backend_fullstack -> configmap_backend_config_fullstack [label="uses-configmap"];
+    deployment_backend_fullstack -> service_postgres_fullstack [label="connects-to-via-config\npostgres:5432"];
     deployment_backend_fullstack -> configmap_backend_config_fullstack [label="uses-configmap"];
+    deployment_backend_fullstack -> service_postgres_fullstack [label="connects-to-via-config\npostgres:5432"];
 }

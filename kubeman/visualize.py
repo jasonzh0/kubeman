@@ -8,6 +8,7 @@ and generate visual diagrams showing the hierarchy and dependencies.
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 import sys
+import re
 import yaml
 from collections import defaultdict
 
@@ -68,14 +69,25 @@ class ResourceRelationship:
         target: ResourceNode,
         relationship_type: str,
         label: Optional[str] = None,
+        address: Optional[str] = None,
     ):
         self.source = source
         self.target = target
         self.relationship_type = relationship_type
-        self.label = label or relationship_type
+        self.address = address
+        # Include address in label if provided
+        if address and label:
+            self.label = f"{label}\n{address}"
+        elif address:
+            self.label = f"{relationship_type}\n{address}"
+        else:
+            self.label = label or relationship_type
 
     def __repr__(self) -> str:
-        return f"ResourceRelationship({self.source} -> {self.target}: {self.relationship_type})"
+        addr = f" ({self.address})" if self.address else ""
+        return (
+            f"ResourceRelationship({self.source} -> {self.target}: {self.relationship_type}{addr})"
+        )
 
 
 class ResourceAnalyzer:
@@ -160,6 +172,9 @@ class ResourceAnalyzer:
         for resource in self.resources.values():
             if resource.manifest:
                 self._extract_relationships(resource)
+                # Also check ConfigMap data for network connections
+                if resource.kind == "ConfigMap":
+                    self._extract_configmap_network_connections(resource)
 
         return dict(self.namespace_to_resources), self.relationships
 
@@ -240,6 +255,11 @@ class ResourceAnalyzer:
             # Environment variables from ConfigMaps/Secrets
             env = container.get("env", [])
             for env_var in env:
+                # Check for direct value (not from ConfigMap/Secret)
+                env_value = env_var.get("value")
+                if env_value:
+                    self._detect_network_connections(resource, env_value)
+
                 value_from = env_var.get("valueFrom", {})
                 if "configMapKeyRef" in value_from:
                     cm_ref = value_from["configMapKeyRef"]
@@ -250,6 +270,12 @@ class ResourceAnalyzer:
                             self.relationships.append(
                                 ResourceRelationship(resource, target, "uses-configmap")
                             )
+                            # Also check ConfigMap data for network connections
+                            if target.manifest:
+                                cm_data = target.manifest.get("data", {})
+                                for key, value in cm_data.items():
+                                    if isinstance(value, str):
+                                        self._detect_network_connections(resource, value, target)
                 if "secretKeyRef" in value_from:
                     secret_ref = value_from["secretKeyRef"]
                     secret_name = secret_ref.get("name")
@@ -272,6 +298,12 @@ class ResourceAnalyzer:
                             self.relationships.append(
                                 ResourceRelationship(resource, target, "uses-configmap")
                             )
+                            # Check ConfigMap data for network connections
+                            if target.manifest:
+                                cm_data = target.manifest.get("data", {})
+                                for key, value in cm_data.items():
+                                    if isinstance(value, str):
+                                        self._detect_network_connections(resource, value, target)
                 if "secretRef" in env_from_item:
                     secret_ref = env_from_item["secretRef"]
                     secret_name = secret_ref.get("name")
@@ -441,6 +473,179 @@ class ResourceAnalyzer:
                 return False
         return True
 
+    def _extract_configmap_network_connections(self, configmap: ResourceNode) -> None:
+        """Extract network connections from ConfigMap data that reference services."""
+        if not configmap.manifest:
+            return
+
+        data = configmap.manifest.get("data", {})
+        for key, value in data.items():
+            if isinstance(value, str):
+                # Find all resources that use this ConfigMap
+                for resource in self.resources.values():
+                    if resource == configmap:
+                        continue
+                    # Check if this resource uses the ConfigMap
+                    if self._resource_uses_configmap(resource, configmap):
+                        self._detect_network_connections(resource, value, configmap)
+
+    def _resource_uses_configmap(self, resource: ResourceNode, configmap: ResourceNode) -> bool:
+        """Check if a resource uses a specific ConfigMap."""
+        if not resource.manifest or resource.kind not in [
+            "Deployment",
+            "StatefulSet",
+            "Job",
+            "DaemonSet",
+        ]:
+            return False
+
+        spec = resource.manifest.get("spec", {})
+        template = spec.get("template", {})
+        pod_spec = template.get("spec", {})
+        containers = pod_spec.get("containers", []) + pod_spec.get("initContainers", [])
+
+        for container in containers:
+            # Check env with configMapKeyRef
+            env = container.get("env", [])
+            for env_var in env:
+                value_from = env_var.get("valueFrom", {})
+                if "configMapKeyRef" in value_from:
+                    cm_ref = value_from["configMapKeyRef"]
+                    if cm_ref.get("name") == configmap.name:
+                        return True
+
+            # Check envFrom
+            env_from = container.get("envFrom", [])
+            for env_from_item in env_from:
+                if "configMapRef" in env_from_item:
+                    cm_ref = env_from_item["configMapRef"]
+                    if cm_ref.get("name") == configmap.name:
+                        return True
+
+            # Check volumes
+            volumes = pod_spec.get("volumes", [])
+            for volume in volumes:
+                if "configMap" in volume:
+                    cm_ref = volume["configMap"]
+                    if cm_ref.get("name") == configmap.name:
+                        return True
+
+        return False
+
+    def _detect_network_connections(
+        self,
+        source: ResourceNode,
+        text: str,
+        intermediate_resource: Optional[ResourceNode] = None,
+    ) -> None:
+        """
+        Detect network connections in text (environment variables, ConfigMap data, etc.).
+
+        Looks for patterns like:
+        - service-name:port
+        - service-name.namespace.svc.cluster.local:port
+        - URLs containing service names (http://, https://, postgresql://, etc.)
+        """
+        if not text or not isinstance(text, str):
+            return
+
+        # Pattern to match service names in various formats:
+        # - service-name:port
+        # - service-name.namespace.svc.cluster.local:port
+        # - URLs: http://service-name:port, postgresql://user@service-name:port/db
+        # - Just service-name (common in Kubernetes)
+        service_patterns = [
+            # Full DNS: service.namespace.svc.cluster.local
+            r"([a-z0-9](?:[a-z0-9-]*[a-z0-9])?)\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.svc\.cluster\.local",
+            # Short form: service:port or service.namespace:port
+            r"([a-z0-9](?:[a-z0-9-]*[a-z0-9])?)(?::\d+)?",
+        ]
+
+        # Also check for URLs with service names
+        url_pattern = r"(?:https?|postgresql?|mysql|redis|mongodb|kafka)://[^@]*@?([a-z0-9](?:[a-z0-9-]*[a-z0-9])?)(?::(\d+))?"
+
+        found_services = set()
+
+        # Extract service names and addresses from URLs
+        url_matches = re.finditer(url_pattern, text, re.IGNORECASE)
+        for match in url_matches:
+            service_name = match.group(1)
+            port = match.group(2)
+            if service_name and len(service_name) > 1:  # Avoid matching single characters
+                # Extract the full connection string from URL
+                full_url = match.group(0)
+                # Extract host:port from URL
+                url_host_match = re.search(
+                    r"://[^@]*@?([^:/]+)(?::(\d+))?(?:/|$)", full_url, re.IGNORECASE
+                )
+                if url_host_match:
+                    host = url_host_match.group(1)
+                    url_port = url_host_match.group(2) or port
+                    address = f"{host}:{url_port}" if url_port else host
+                    found_services.add((service_name, address))
+
+        # Extract service names from DNS patterns
+        dns_matches = re.finditer(service_patterns[0], text, re.IGNORECASE)
+        for match in dns_matches:
+            service_name = match.group(1)
+            full_match = match.group(0)
+            if service_name:
+                found_services.add((service_name, full_match))
+
+        # Extract simple service names (service:port or just service)
+        # This is more permissive, so we'll be careful
+        simple_pattern = r"\b([a-z0-9](?:[a-z0-9-]*[a-z0-9])?)(?::(\d+))?\b"
+        simple_matches = re.finditer(simple_pattern, text, re.IGNORECASE)
+        for match in simple_matches:
+            potential_service = match.group(1)
+            port = match.group(2)
+            # Filter out common non-service words and very short matches
+            if (
+                potential_service
+                and len(potential_service) > 2
+                and potential_service not in ["http", "https", "tcp", "udp", "port", "localhost"]
+                and not potential_service.isdigit()
+            ):
+                # Check if this looks like a service name (contains hyphens or is a known pattern)
+                if "-" in potential_service or len(potential_service) >= 4:
+                    address = f"{potential_service}:{port}" if port else potential_service
+                    found_services.add((potential_service, address))
+
+        # Try to find matching Service resources
+        for service_name, address in found_services:
+            # Use the extracted address
+            display_address = address
+
+            # Try in the same namespace first
+            target = self._find_resource("Service", service_name, source.namespace)
+            if target:
+                # Create connection relationship with address
+                rel_type = "connects-to"
+                if intermediate_resource:
+                    # If connection is through a ConfigMap, note that
+                    rel_type = "connects-to-via-config"
+                self.relationships.append(
+                    ResourceRelationship(source, target, rel_type, address=display_address)
+                )
+            else:
+                # Try in other namespaces (for cross-namespace connections)
+                # We'll search all resources to find services with this name
+                for other_resource in self.resources.values():
+                    if (
+                        other_resource.kind == "Service"
+                        and other_resource.name == service_name
+                        and other_resource.namespace != source.namespace
+                    ):
+                        rel_type = "connects-to"
+                        if intermediate_resource:
+                            rel_type = "connects-to-via-config"
+                        self.relationships.append(
+                            ResourceRelationship(
+                                source, other_resource, rel_type, address=display_address
+                            )
+                        )
+                        break
+
 
 class DOTGenerator:
     """Generates Graphviz DOT format from resource graph."""
@@ -546,7 +751,8 @@ class DOTGenerator:
 
             # Only add edge if both nodes exist
             if rel.source in self._all_resources() and rel.target in self._all_resources():
-                label_escaped = rel.label.replace('"', '\\"')
+                # Escape quotes and preserve newlines for multi-line labels
+                label_escaped = rel.label.replace('"', '\\"').replace("\n", "\\n")
                 lines.append(f'    {source_id} -> {target_id} [label="{label_escaped}"];')
 
         lines.append("}")
