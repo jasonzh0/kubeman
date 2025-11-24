@@ -655,8 +655,7 @@ git.push_manifests()
 
 This package is automatically published to PyPI via GitHub Actions when:
 1. A new release is published on GitHub
-2. A version tag is pushed (e.g., `v0.1.0`, `v1.0.0`)
-3. Manual trigger via the GitHub Actions workflow
+2. Manual trigger via the GitHub Actions workflow
 
 ## License
 
