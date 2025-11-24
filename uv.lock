@@ -272,7 +272,7 @@ wheels = [
 
 [[package]]
 name = "kubeman"
-version = "0.5.2"
+version = "0.5.3"
 source = { editable = "." }
 dependencies = [
     { name = "pyyaml" },
@@ -294,6 +294,9 @@ dev = [
 [package.dev-dependencies]
 dev = [
     { name = "kubeman" },
+    { name = "pytest", version = "8.3.5", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.9'" },
+    { name = "pytest", version = "8.4.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.9.*'" },
+    { name = "pytest", version = "9.0.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
 ]
 
 [package.metadata]
@@ -307,7 +310,10 @@ requires-dist = [
 provides-extras = ["dev"]
 
 [package.metadata.requires-dev]
-dev = [{ name = "kubeman", editable = "." }]
+dev = [
+    { name = "kubeman", editable = "." },
+    { name = "pytest", specifier = ">=8.3.5" },
+]
 
 [[package]]
 name = "mypy-extensions"

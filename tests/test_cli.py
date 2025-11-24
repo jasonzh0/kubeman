@@ -519,3 +519,13 @@ class TestMain:
             main()
         output = capsys.readouterr()
         assert "Kubeman" in output.out or "kubeman" in output.out.lower()
+
+    @patch("kubeman.cli.cmd_visualize")
+    @patch("sys.argv", ["kubeman", "visualize", "--file", "kubeman.py", "--output", "diagram.dot"])
+    def test_main_visualize_command(self, mock_cmd_visualize):
+        """Test main function with visualize command."""
+        main()
+        mock_cmd_visualize.assert_called_once()
+        args = mock_cmd_visualize.call_args[0][0]
+        assert args.file == "kubeman.py"
+        assert args.output == "diagram.dot"
