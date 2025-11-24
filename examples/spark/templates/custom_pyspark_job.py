@@ -112,7 +112,3 @@ class CustomPySparkJob(KubernetesResource):
 
         docker = DockerManager()
         docker.kind_load_image("custom-pyspark-job", tag="latest")
-
-    def enable_argocd(self) -> bool:
-        """Enable ArgoCD Application generation (optional)"""
-        return False

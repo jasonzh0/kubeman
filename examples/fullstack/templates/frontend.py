@@ -137,7 +137,3 @@ class FrontendApp(KubernetesResource):
 
         docker = DockerManager()
         docker.kind_load_image("frontend-app", tag="latest")
-
-    def enable_argocd(self) -> bool:
-        """Disable ArgoCD Application generation for this example"""
-        return False

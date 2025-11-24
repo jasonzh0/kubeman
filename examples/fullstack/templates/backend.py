@@ -118,7 +118,3 @@ class BackendAPI(KubernetesResource):
 
         docker = DockerManager()
         docker.kind_load_image("backend-api", tag="latest")
-
-    def enable_argocd(self) -> bool:
-        """Disable ArgoCD Application generation for this example"""
-        return False

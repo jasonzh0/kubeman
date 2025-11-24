@@ -114,7 +114,3 @@ class StockPriceProducer(KubernetesResource):
 
         docker = DockerManager()
         docker.kind_load_image("stock-price-producer", tag="latest")
-
-    def enable_argocd(self) -> bool:
-        """Enable ArgoCD Application generation (optional)"""
-        return False

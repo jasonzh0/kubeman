@@ -206,7 +206,3 @@ class PostgresDB(KubernetesResource):
                 },
             },
         ]
-
-    def enable_argocd(self) -> bool:
-        """Disable ArgoCD Application generation for this example"""
-        return False
