@@ -5,6 +5,7 @@ import yaml
 from kubeman.template import Template
 from kubeman.executor import get_executor
 from kubeman.resource_utils import CLUSTER_SCOPED_KINDS
+from kubeman.output import get_output
 
 
 class HelmChart(Template):
@@ -112,14 +113,15 @@ class HelmChart(Template):
             return
 
         executor = get_executor()
-        print(f"\nRendering helm chart for {self.name}...")
+        output = get_output()
+        output.verbose(f"Rendering helm chart for {self.name}")
         with tempfile.TemporaryDirectory() as tmpdir:
             values_file = Path(tmpdir) / "values.yaml"
             with open(values_file, "w") as f:
                 f.write(self.to_values_yaml())
 
             helm_package_name = self.full_helm_package_name()
-            print(f"helm package name: {helm_package_name}")
+            output.verbose(f"Helm package name: {helm_package_name}")
             cmd = [
                 "helm",
                 "template",
@@ -174,7 +176,7 @@ class HelmChart(Template):
                 output_dir.mkdir(parents=True, exist_ok=True)
                 output_file = output_dir / f"{self.name}-manifests.yaml"
 
-                print(f"Writing helm output to {output_file}")
+                output.verbose(f"Writing helm output to {output_file}")
                 with open(output_file, "w") as f:
                     f.write(output_content)
             except Exception as e:
@@ -185,12 +187,13 @@ class HelmChart(Template):
         Render any extra manifests.
         Each manifest will be written to a separate file named after its metadata.name.
         """
+        output = get_output()
         extra_manifests = self.extra_manifests()
         if not extra_manifests:
-            print(f"No extra manifests for {self.name}")
+            output.verbose(f"No extra manifests for {self.name}")
             return
 
-        print(f"\nRendering {len(extra_manifests)} extra manifests for {self.name}...")
+        output.verbose(f"Rendering {len(extra_manifests)} extra manifests for {self.name}")
         manifests_dir = self.manifests_dir()
         if isinstance(manifests_dir, str):
             manifests_dir = Path(manifests_dir)
@@ -209,11 +212,13 @@ class HelmChart(Template):
             output_file = output_dir / f"{manifest_name}-{manifest_kind}.yaml"
 
             if output_file.exists():
-                print(
+                output.verbose(
                     f"Overwriting existing manifest {manifest_name} ({manifest_kind}) at {output_file}"
                 )
             else:
-                print(f"Writing manifest {manifest_name} ({manifest_kind}) to {output_file}")
+                output.verbose(
+                    f"Writing manifest {manifest_name} ({manifest_kind}) to {output_file}"
+                )
 
             with open(output_file, "w") as f:
                 yaml.dump(manifest, f)

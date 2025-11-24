@@ -10,6 +10,8 @@ import logging
 from typing import Optional, List, Dict, Any
 from pathlib import Path
 
+from kubeman.output import get_output
+
 logger = logging.getLogger(__name__)
 
 
@@ -72,10 +74,13 @@ class CommandExecutor:
 
         # Convert Path to string for cwd
         cwd_str = str(cwd) if cwd else None
+        output = get_output()
 
         logger.debug(f"Executing command: {' '.join(cmd)}")
+        output.verbose(f"Executing: {' '.join(cmd)}")
         if cwd_str:
             logger.debug(f"Working directory: {cwd_str}")
+            output.verbose(f"Working directory: {cwd_str}")
 
         try:
             result = subprocess.run(
@@ -89,15 +94,29 @@ class CommandExecutor:
                 **kwargs,
             )
             logger.debug(f"Command completed with return code: {result.returncode}")
+            output.verbose(f"Command completed with return code: {result.returncode}")
+            if result.stdout and output.verbosity.value >= 2:
+                output.verbose(f"Stdout: {result.stdout}")
             return result
         except subprocess.CalledProcessError as e:
             logger.error(f"Command failed: {' '.join(cmd)}")
             logger.error(f"Return code: {e.returncode}")
+            output.error(
+                f"Command failed: {' '.join(cmd)}",
+                suggestion=f"Return code: {e.returncode}. Check command syntax and permissions.",
+            )
             if e.stderr:
                 logger.error(f"Stderr: {e.stderr}")
+                output.verbose(f"Stderr: {e.stderr}")
+            if e.stdout:
+                output.verbose(f"Stdout: {e.stdout}")
             raise
         except FileNotFoundError as e:
             logger.error(f"Command not found: {cmd[0]}")
+            output.error(
+                f"Command not found: {cmd[0]}",
+                suggestion=f"Ensure {cmd[0]} is installed and available in your PATH",
+            )
             raise
 
     def run_silent(

@@ -3,6 +3,7 @@ import shutil
 from pathlib import Path
 from kubeman.config import Config
 from kubeman.executor import CommandExecutor, get_executor
+from kubeman.output import get_output
 
 
 class GitManager:
@@ -94,7 +95,8 @@ class GitManager:
                 cwd=repo_temp_path,
             )
             branch_exists = bool(check_result.stdout.strip())
-            print(f"Checking if branch '{branch_name}' exists on remote: {branch_exists}")
+            output = get_output()
+            output.verbose(f"Checking if branch '{branch_name}' exists on remote: {branch_exists}")
 
             # Fetch only the branch we need
             if branch_exists:
@@ -152,14 +154,16 @@ class GitManager:
 
 if __name__ == "__main__":
     from pathlib import Path
+    from kubeman.output import get_output
 
-    print(f"Starting push_manifests. Working directory: {Path.cwd()}")
+    output = get_output()
+    output.verbose(f"Starting push_manifests. Working directory: {Path.cwd()}")
 
     try:
         git_instance = GitManager()
         git_instance.push_manifests()
     except Exception as e:
-        print(f"Error in push_manifests: {e}")
+        output.error(f"Error in push_manifests: {e}")
         import traceback
 
         traceback.print_exc()

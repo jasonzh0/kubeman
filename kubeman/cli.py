@@ -17,6 +17,7 @@ from kubeman.template import Template
 from kubeman.executor import get_executor
 from kubeman.resource_utils import CLUSTER_SCOPED_KINDS
 from kubeman.visualize import generate_visualization
+from kubeman.output import OutputManager, Verbosity, get_output, set_output
 
 
 def load_templates_file(file_path: str) -> None:
@@ -371,6 +372,7 @@ def render_templates(manifests_dir: Optional[Path] = None) -> List[str]:
         ValueError: If no templates are registered
         RuntimeError: If rendering fails
     """
+    output = get_output()
     original_dir = None
     if manifests_dir is not None:
         original_dir = Template.manifests_dir()
@@ -386,19 +388,26 @@ def render_templates(manifests_dir: Optional[Path] = None) -> List[str]:
                 "No templates registered. Make sure your kubeman.py file registers templates using @TemplateRegistry.register"
             )
 
-        print(f"Found {len(templates)} registered template(s)")
+        output.info(f"Found {len(templates)} registered template(s)")
 
-        for template_class in templates:
-            try:
-                print(f"\nRendering template: {template_class.__name__}")
-                template = template_class()
-                template.render()
-                rendered_template_names.append(template.name)
-                print(f"✓ Successfully rendered {template_class.__name__}")
-            except Exception as e:
-                raise RuntimeError(
-                    f"Failed to render template {template_class.__name__}: {e}"
-                ) from e
+        with output.progress("Rendering templates", total=len(templates)) as progress:
+            for idx, template_class in enumerate(templates):
+                try:
+                    output.print(f"Rendering template: {template_class.__name__}")
+                    template = template_class()
+                    template.render()
+                    rendered_template_names.append(template.name)
+                    output.success(f"Successfully rendered {template_class.__name__}")
+                    if progress:
+                        progress.update(progress.tasks[0].id, advance=1)
+                except Exception as e:
+                    output.error(
+                        f"Failed to render template {template_class.__name__}",
+                        suggestion="Check template definition and dependencies",
+                    )
+                    raise RuntimeError(
+                        f"Failed to render template {template_class.__name__}: {e}"
+                    ) from e
     finally:
         # Reset to original directory
         if manifests_dir is not None:
@@ -460,12 +469,15 @@ def apply_manifests(
                 "Templates must be rendered before applying."
             )
 
+        output = get_output()
         if template_names is not None:
             yaml_files = _filter_manifests_by_template_names(
                 yaml_files, template_names, manifests_dir_path
             )
             if not yaml_files:
-                print(f"\nNo manifests found for registered templates: {', '.join(template_names)}")
+                output.warning(
+                    f"No manifests found for registered templates: {', '.join(template_names)}"
+                )
                 return
 
         crd_only_files, namespace_files, other_files = _categorize_yaml_files(yaml_files)
@@ -478,50 +490,72 @@ def apply_manifests(
                 if crd_file:
                     crd_extracted_files.append(crd_file)
 
-        print(f"\nApplying manifests from {manifests_dir_path}")
-        print(f"Found {len(yaml_files)} manifest file(s)")
+        output.section("Applying Manifests")
+        output.info(f"Applying manifests from {manifests_dir_path}")
+        output.info(f"Found {len(yaml_files)} manifest file(s)")
         total_crds = len(crd_only_files) + len(crd_extracted_files)
         if total_crds > 0:
-            print(f"  - {total_crds} CRD file(s) will be applied first")
+            output.print(f"  - {total_crds} CRD file(s) will be applied first")
         if namespace_files:
-            print(f"  - {len(namespace_files)} Namespace file(s) will be applied next")
+            output.print(f"  - {len(namespace_files)} Namespace file(s) will be applied next")
         if other_files:
-            print(f"  - {len(other_files)} other resource file(s)")
+            output.print(f"  - {len(other_files)} other resource file(s)")
 
         applied_count = 0
+        all_files = crd_only_files + crd_extracted_files + namespace_files + other_files
+        total_files = len(all_files)
 
-        for yaml_file in crd_only_files + crd_extracted_files:
-            cmd = ["kubectl", "apply", "-f", str(yaml_file)]
-            try:
-                executor.run(cmd, check=True, text=True, capture_output=True)
-                applied_count += 1
-            except Exception as e:
-                error_msg = str(e)
-                print(f"✗ Failed to apply {yaml_file}: {error_msg}", file=sys.stderr)
-                raise RuntimeError(f"kubectl apply failed for {yaml_file}: {error_msg}") from e
+        with output.progress("Applying manifests", total=total_files) as progress:
+            for yaml_file in crd_only_files + crd_extracted_files:
+                cmd = ["kubectl", "apply", "-f", str(yaml_file)]
+                try:
+                    output.verbose(f"Applying {yaml_file.name}")
+                    executor.run(cmd, check=True, text=True, capture_output=True)
+                    applied_count += 1
+                    if progress:
+                        progress.update(progress.tasks[0].id, advance=1)
+                except Exception as e:
+                    error_msg = str(e)
+                    output.error(
+                        f"Failed to apply {yaml_file}",
+                        suggestion="Check kubectl configuration and cluster connectivity",
+                    )
+                    raise RuntimeError(f"kubectl apply failed for {yaml_file}: {error_msg}") from e
 
-        for yaml_file in namespace_files:
-            cmd = ["kubectl", "apply", "-f", str(yaml_file)]
-            try:
-                executor.run(cmd, check=True, text=True, capture_output=True)
-                applied_count += 1
-            except Exception as e:
-                error_msg = str(e)
-                print(f"✗ Failed to apply {yaml_file}: {error_msg}", file=sys.stderr)
-                raise RuntimeError(f"kubectl apply failed for {yaml_file}: {error_msg}") from e
+            for yaml_file in namespace_files:
+                cmd = ["kubectl", "apply", "-f", str(yaml_file)]
+                try:
+                    output.verbose(f"Applying {yaml_file.name}")
+                    executor.run(cmd, check=True, text=True, capture_output=True)
+                    applied_count += 1
+                    if progress:
+                        progress.update(progress.tasks[0].id, advance=1)
+                except Exception as e:
+                    error_msg = str(e)
+                    output.error(
+                        f"Failed to apply {yaml_file}",
+                        suggestion="Check kubectl configuration and cluster connectivity",
+                    )
+                    raise RuntimeError(f"kubectl apply failed for {yaml_file}: {error_msg}") from e
 
-        for yaml_file in other_files:
-            cmd = ["kubectl", "apply", "-f", str(yaml_file)]
+            for yaml_file in other_files:
+                cmd = ["kubectl", "apply", "-f", str(yaml_file)]
 
-            try:
-                executor.run(cmd, check=True, text=True, capture_output=True)
-                applied_count += 1
-            except Exception as e:
-                error_msg = str(e)
-                print(f"✗ Failed to apply {yaml_file}: {error_msg}", file=sys.stderr)
-                raise RuntimeError(f"kubectl apply failed for {yaml_file}: {error_msg}") from e
+                try:
+                    output.verbose(f"Applying {yaml_file.name}")
+                    executor.run(cmd, check=True, text=True, capture_output=True)
+                    applied_count += 1
+                    if progress:
+                        progress.update(progress.tasks[0].id, advance=1)
+                except Exception as e:
+                    error_msg = str(e)
+                    output.error(
+                        f"Failed to apply {yaml_file}",
+                        suggestion="Check kubectl configuration and cluster connectivity",
+                    )
+                    raise RuntimeError(f"kubectl apply failed for {yaml_file}: {error_msg}") from e
 
-        print(f"✓ Successfully applied {applied_count} manifest file(s)")
+        output.success(f"Successfully applied {applied_count} manifest file(s)")
     finally:
         if manifests_dir is not None:
             Template.set_manifests_dir(original_dir)
@@ -529,6 +563,7 @@ def apply_manifests(
 
 def cmd_render(args: argparse.Namespace) -> None:
     """Handle the render subcommand."""
+    output = get_output()
     try:
         TemplateRegistry.clear()
 
@@ -537,6 +572,7 @@ def cmd_render(args: argparse.Namespace) -> None:
 
         # Load templates file (imports trigger registration)
         templates_file = args.file or "./kubeman.py"
+        output.verbose(f"Loading templates from {templates_file}")
         load_templates_file(templates_file)
 
         # Get optional output directory
@@ -544,18 +580,27 @@ def cmd_render(args: argparse.Namespace) -> None:
         if hasattr(args, "output_dir") and args.output_dir is not None:
             try:
                 output_dir = Path(args.output_dir).resolve()
+                output.verbose(f"Using output directory: {output_dir}")
             except (TypeError, AttributeError):
                 output_dir = None
 
         render_templates(manifests_dir=output_dir)
-        print("\n✓ All templates rendered successfully")
-    except (FileNotFoundError, ImportError, ValueError, RuntimeError) as e:
-        print(f"✗ Error: {e}", file=sys.stderr)
+        output.newline()
+        output.success("All templates rendered successfully")
+    except FileNotFoundError as e:
+        output.error(f"Error: {e}")
+        sys.exit(1)
+    except ImportError as e:
+        output.error(f"Error: {e}")
+        sys.exit(1)
+    except (ValueError, RuntimeError) as e:
+        output.error(f"Error: {e}")
         sys.exit(1)
 
 
 def cmd_apply(args: argparse.Namespace) -> None:
     """Handle the apply subcommand."""
+    output = get_output()
     try:
         TemplateRegistry.clear()
 
@@ -563,21 +608,30 @@ def cmd_apply(args: argparse.Namespace) -> None:
         TemplateRegistry.set_skip_builds(skip_builds)
 
         templates_file = args.file or "./kubeman.py"
+        output.verbose(f"Loading templates from {templates_file}")
         load_templates_file(templates_file)
 
         output_dir = None
         if hasattr(args, "output_dir") and args.output_dir is not None:
             try:
                 output_dir = Path(args.output_dir).resolve()
+                output.verbose(f"Using output directory: {output_dir}")
             except (TypeError, AttributeError):
                 output_dir = None
 
         template_names = render_templates(manifests_dir=output_dir)
-        print("\n✓ Templates rendered successfully")
+        output.newline()
+        output.success("Templates rendered successfully")
 
         apply_manifests(manifests_dir=output_dir, template_names=template_names)
-    except (FileNotFoundError, ImportError, ValueError, RuntimeError) as e:
-        print(f"✗ Error: {e}", file=sys.stderr)
+    except FileNotFoundError as e:
+        output.error(f"Error: {e}")
+        sys.exit(1)
+    except ImportError as e:
+        output.error(f"Error: {e}")
+        sys.exit(1)
+    except (ValueError, RuntimeError) as e:
+        output.error(f"Error: {e}")
         sys.exit(1)
 
 
@@ -690,51 +744,58 @@ def display_plan(plan: Dict[str, Any], verbose: bool = False) -> None:
         plan: Plan dictionary from generate_plan()
         verbose: If True, show detailed output including file paths
     """
-    print("\n" + "=" * 60)
-    print("PLAN: What would be built, applied, and loaded")
-    print("=" * 60)
+    output = get_output()
+    output.rule("PLAN: What would be built, applied, and loaded")
 
     # Build operations
-    print(f"\n📦 Build Operations:")
     build_count = len(plan["templates_with_build"])
     if build_count > 0:
-        print(f"  {build_count} template(s) would build Docker images:")
-        if verbose:
-            for template_name in plan["templates_with_build"]:
-                print(f"    - {template_name}")
-        else:
-            print(f"    Templates: {', '.join(plan['templates_with_build'])}")
+        rows = (
+            [[name] for name in plan["templates_with_build"]]
+            if verbose
+            else [[", ".join(plan["templates_with_build"])]]
+        )
+        output.table(
+            title="📦 Build Operations",
+            columns=["Template"],
+            rows=rows,
+        )
     else:
-        print("  No build operations would be executed")
+        output.info("📦 Build Operations: No build operations would be executed")
 
     # Load operations
-    print(f"\n🚚 Load Operations:")
     load_count = len(plan["templates_with_load"])
     if load_count > 0:
-        print(f"  {load_count} template(s) would load Docker images into kind cluster:")
-        if verbose:
-            for template_name in plan["templates_with_load"]:
-                print(f"    - {template_name}")
-        else:
-            print(f"    Templates: {', '.join(plan['templates_with_load'])}")
+        rows = (
+            [[name] for name in plan["templates_with_load"]]
+            if verbose
+            else [[", ".join(plan["templates_with_load"])]]
+        )
+        output.table(
+            title="🚚 Load Operations",
+            columns=["Template"],
+            rows=rows,
+        )
     else:
-        print("  No load operations would be executed")
+        output.info("🚚 Load Operations: No load operations would be executed")
 
     # Render operations
-    print(f"\n📝 Render Operations:")
     render_count = len(plan["template_names"])
     if render_count > 0:
-        print(f"  {render_count} template(s) would be rendered:")
-        if verbose:
-            for template_name in plan["template_names"]:
-                print(f"    - {template_name}")
-        else:
-            print(f"    Templates: {', '.join(plan['template_names'])}")
+        rows = (
+            [[name] for name in plan["template_names"]]
+            if verbose
+            else [[", ".join(plan["template_names"])]]
+        )
+        output.table(
+            title="📝 Render Operations",
+            columns=["Template"],
+            rows=rows,
+        )
     else:
-        print("  No templates would be rendered")
+        output.info("📝 Render Operations: No templates would be rendered")
 
     # Apply operations
-    print(f"\n⚙️  Apply Operations:")
     manifest_files = plan["manifest_files"]
     crd_count = len(manifest_files["crd_files"])
     namespace_count = len(manifest_files["namespace_files"])
@@ -742,30 +803,45 @@ def display_plan(plan: Dict[str, Any], verbose: bool = False) -> None:
     total_manifests = plan["total_manifests"]
 
     if total_manifests > 0:
-        print(f"  {total_manifests} manifest file(s) would be applied:")
+        rows = []
         if crd_count > 0:
-            print(f"    - {crd_count} CRD file(s) (applied first)")
             if verbose:
                 for file_path in manifest_files["crd_files"]:
-                    print(f"      • {file_path}")
+                    rows.append([f"CRD ({crd_count} total)", file_path])
+            else:
+                rows.append([f"CRD ({crd_count} total)", f"{crd_count} file(s) - applied first"])
         if namespace_count > 0:
-            print(f"    - {namespace_count} Namespace file(s) (applied next)")
             if verbose:
                 for file_path in manifest_files["namespace_files"]:
-                    print(f"      • {file_path}")
+                    rows.append([f"Namespace ({namespace_count} total)", file_path])
+            else:
+                rows.append(
+                    [
+                        f"Namespace ({namespace_count} total)",
+                        f"{namespace_count} file(s) - applied next",
+                    ]
+                )
         if other_count > 0:
-            print(f"    - {other_count} other resource file(s)")
             if verbose:
                 for file_path in manifest_files["other_files"]:
-                    print(f"      • {file_path}")
-    else:
-        print("  No manifests would be applied")
+                    rows.append([f"Other ({other_count} total)", file_path])
+            else:
+                rows.append([f"Other ({other_count} total)", f"{other_count} file(s)"])
 
-    print("\n" + "=" * 60)
+        output.table(
+            title=f"⚙️  Apply Operations ({total_manifests} total manifest file(s))",
+            columns=["Type", "Details"],
+            rows=rows,
+        )
+    else:
+        output.info("⚙️  Apply Operations: No manifests would be applied")
+
+    output.rule()
 
 
 def cmd_plan(args: argparse.Namespace) -> None:
     """Handle the plan subcommand."""
+    output = get_output()
     try:
         TemplateRegistry.clear()
 
@@ -775,6 +851,7 @@ def cmd_plan(args: argparse.Namespace) -> None:
 
         # Load templates file (imports trigger registration)
         templates_file = args.file or "./kubeman.py"
+        output.verbose(f"Loading templates from {templates_file}")
         load_templates_file(templates_file)
 
         # Get optional output directory
@@ -782,23 +859,32 @@ def cmd_plan(args: argparse.Namespace) -> None:
         if hasattr(args, "output_dir") and args.output_dir is not None:
             try:
                 output_dir = Path(args.output_dir).resolve()
+                output.verbose(f"Using output directory: {output_dir}")
             except (TypeError, AttributeError):
                 output_dir = None
 
         # Generate plan
-        plan = generate_plan(manifests_dir=output_dir)
+        with output.spinner("Analyzing templates and generating plan"):
+            plan = generate_plan(manifests_dir=output_dir)
 
         # Display plan
-        verbose = getattr(args, "verbose", False)
+        verbose = getattr(args, "verbose", False) or output.verbosity >= Verbosity.VERBOSE
         display_plan(plan, verbose=verbose)
 
-    except (FileNotFoundError, ImportError, ValueError, RuntimeError) as e:
-        print(f"✗ Error: {e}", file=sys.stderr)
+    except FileNotFoundError as e:
+        output.error(f"Error: {e}")
+        sys.exit(1)
+    except ImportError as e:
+        output.error(f"Error: {e}")
+        sys.exit(1)
+    except (ValueError, RuntimeError) as e:
+        output.error(f"Error: {e}")
         sys.exit(1)
 
 
 def cmd_visualize(args: argparse.Namespace) -> None:
     """Handle the visualize subcommand."""
+    output = get_output()
     try:
         TemplateRegistry.clear()
 
@@ -808,6 +894,7 @@ def cmd_visualize(args: argparse.Namespace) -> None:
 
         # Load templates file (imports trigger registration)
         templates_file = args.file or "./kubeman.py"
+        output.verbose(f"Loading templates from {templates_file}")
         load_templates_file(templates_file)
 
         # Get optional output directory
@@ -815,12 +902,14 @@ def cmd_visualize(args: argparse.Namespace) -> None:
         if hasattr(args, "output_dir") and args.output_dir is not None:
             try:
                 output_dir = Path(args.output_dir).resolve()
+                output.verbose(f"Using output directory: {output_dir}")
             except (TypeError, AttributeError):
                 output_dir = None
 
         # Render templates to generate manifests
         template_names = render_templates(manifests_dir=output_dir)
-        print("\n✓ Templates rendered successfully")
+        output.newline()
+        output.success("Templates rendered successfully")
 
         # Get manifests directory
         manifests_dir_path = Template.manifests_dir()
@@ -835,13 +924,16 @@ def cmd_visualize(args: argparse.Namespace) -> None:
 
         # Generate visualization (only for templates from this kubeman.py file)
         show_crds = getattr(args, "show_crds", False)
-        print(f"\nGenerating visualization from {manifests_dir_path}...")
-        print(f"Filtering to templates: {', '.join(template_names)}")
+        output.section("Generating Visualization")
+        output.info(f"Generating visualization from {manifests_dir_path}")
+        output.verbose(f"Filtering to templates: {', '.join(template_names)}")
         if show_crds:
-            print("Including CustomResourceDefinitions in visualization")
-        dot_content = generate_visualization(
-            manifests_dir_path, template_names=template_names, show_crds=show_crds
-        )
+            output.info("Including CustomResourceDefinitions in visualization")
+
+        with output.spinner("Analyzing manifests and generating DOT diagram"):
+            dot_content = generate_visualization(
+                manifests_dir_path, template_names=template_names, show_crds=show_crds
+            )
 
         # Write output
         output_file = getattr(args, "output", None)
@@ -850,18 +942,25 @@ def cmd_visualize(args: argparse.Namespace) -> None:
             output_path.parent.mkdir(parents=True, exist_ok=True)
             with open(output_path, "w") as f:
                 f.write(dot_content)
-            print(f"✓ Visualization written to {output_path}")
-            print(f"\nTo render the diagram, run:")
-            print(f"  dot -Tpng {output_path} -o {output_path.stem}.png")
-            print(f"  dot -Tsvg {output_path} -o {output_path.stem}.svg")
+            output.success(f"Visualization written to {output_path}")
+            output.newline()
+            output.info("To render the diagram, run:")
+            output.print(f"  dot -Tpng {output_path} -o {output_path.stem}.png")
+            output.print(f"  dot -Tsvg {output_path} -o {output_path.stem}.svg")
         else:
             # Write to stdout
-            print("\n" + "=" * 60)
-            print(dot_content)
-            print("=" * 60)
+            output.print("=" * 60)
+            output.print(dot_content)
+            output.print("=" * 60)
 
-    except (FileNotFoundError, ImportError, ValueError, RuntimeError) as e:
-        print(f"✗ Error: {e}", file=sys.stderr)
+    except FileNotFoundError as e:
+        output.error(f"Error: {e}")
+        sys.exit(1)
+    except ImportError as e:
+        output.error(f"Error: {e}")
+        sys.exit(1)
+    except (ValueError, RuntimeError) as e:
+        output.error(f"Error: {e}")
         sys.exit(1)
 
 
@@ -905,6 +1004,16 @@ The kubeman.py file should import template modules to trigger registration via
         action="store_true",
         help="Skip Docker image build steps during template registration",
     )
+    render_parser.add_argument(
+        "--quiet",
+        action="store_true",
+        help="Only show errors and final results",
+    )
+    render_parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Show detailed output including file paths and command execution",
+    )
     render_parser.set_defaults(func=cmd_render)
 
     # Apply subcommand
@@ -925,6 +1034,16 @@ The kubeman.py file should import template modules to trigger registration via
         action="store_true",
         help="Skip Docker image build steps during template registration",
     )
+    apply_parser.add_argument(
+        "--quiet",
+        action="store_true",
+        help="Only show errors and final results",
+    )
+    apply_parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Show detailed output including file paths and command execution",
+    )
     apply_parser.set_defaults(func=cmd_apply)
 
     # Plan subcommand
@@ -944,6 +1063,11 @@ The kubeman.py file should import template modules to trigger registration via
         "--skip-build",
         action="store_true",
         help="Skip Docker image build steps during template registration (ignored for plan, always skipped)",
+    )
+    plan_parser.add_argument(
+        "--quiet",
+        action="store_true",
+        help="Only show errors and final results",
     )
     plan_parser.add_argument(
         "--verbose",
@@ -979,9 +1103,30 @@ The kubeman.py file should import template modules to trigger registration via
         action="store_true",
         help="Include CustomResourceDefinitions in the visualization (hidden by default)",
     )
+    visualize_parser.add_argument(
+        "--quiet",
+        action="store_true",
+        help="Only show errors and final results",
+    )
+    visualize_parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Show detailed output including file paths and command execution",
+    )
     visualize_parser.set_defaults(func=cmd_visualize)
 
     args = parser.parse_args()
+
+    # Set up verbosity
+    if getattr(args, "quiet", False):
+        verbosity = Verbosity.QUIET
+    elif getattr(args, "verbose", False):
+        verbosity = Verbosity.VERBOSE
+    else:
+        verbosity = Verbosity.NORMAL
+
+    output_manager = OutputManager(verbosity=verbosity)
+    set_output(output_manager)
 
     # Call the appropriate command handler
     args.func(args)

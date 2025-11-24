@@ -11,6 +11,7 @@ import sys
 import re
 import yaml
 from collections import defaultdict
+from kubeman.output import get_output
 
 
 class ResourceNode:
@@ -165,7 +166,8 @@ class ResourceAnalyzer:
                         namespace_key = resource.namespace or "cluster-scoped"
                         self.namespace_to_resources[namespace_key].append(resource)
             except (yaml.YAMLError, IOError, OSError) as e:
-                print(f"Warning: Could not parse {yaml_file}: {e}", file=sys.stderr)
+                output = get_output()
+                output.warning(f"Could not parse {yaml_file}: {e}")
                 continue
 
         # Extract relationships

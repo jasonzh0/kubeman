@@ -2,6 +2,7 @@ from pathlib import Path
 import yaml
 from typing import Any, Optional
 from kubeman.template import Template
+from kubeman.output import get_output
 
 
 class KubernetesResource(Template):
@@ -505,15 +506,16 @@ class KubernetesResource(Template):
         Render all Kubernetes manifests.
         Each manifest will be written to a separate file named after its metadata.name.
         """
+        output = get_output()
         manifests = self.manifests()
         extra_manifests = self.extra_manifests()
         all_manifests = manifests + extra_manifests
 
         if not all_manifests:
-            print(f"No manifests for {self.name}")
+            output.print(f"No manifests for {self.name}")
             return
 
-        print(f"\nRendering {len(all_manifests)} manifests for {self.name}...")
+        output.verbose(f"Rendering {len(all_manifests)} manifests for {self.name}")
         manifests_dir = self.manifests_dir()
         if isinstance(manifests_dir, str):
             manifests_dir = Path(manifests_dir)
@@ -532,11 +534,13 @@ class KubernetesResource(Template):
             output_file = output_dir / f"{manifest_name}-{manifest_kind}.yaml"
 
             if output_file.exists():
-                print(
+                output.verbose(
                     f"Overwriting existing manifest {manifest_name} ({manifest_kind}) at {output_file}"
                 )
             else:
-                print(f"Writing manifest {manifest_name} ({manifest_kind}) to {output_file}")
+                output.verbose(
+                    f"Writing manifest {manifest_name} ({manifest_kind}) to {output_file}"
+                )
 
             with open(output_file, "w") as f:
                 yaml.dump(manifest, f)
