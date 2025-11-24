@@ -80,7 +80,7 @@ class StockPriceConsumer(KubernetesResource):
         from pathlib import Path
         from kubeman import DockerManager
 
-        kafka_dir = Path(__file__).parent
+        kafka_dir = Path(__file__).parent.parent
         docker = DockerManager()
         docker.build_image(
             component="stock-price-consumer",

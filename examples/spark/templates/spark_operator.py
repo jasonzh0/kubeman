@@ -9,8 +9,8 @@ The deployment consists of:
 2. Service account and RBAC for Spark applications
 
 Usage:
-    kubeman render --file examples/spark/templates.py
-    kubeman apply --file examples/spark/templates.py
+    kubeman render --file examples/spark/kubeman.py
+    kubeman apply --file examples/spark/kubeman.py
     kubeman render
     kubeman apply
 """

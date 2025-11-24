@@ -9,17 +9,17 @@ Usage:
     kubeman apply
 
     # Or with explicit path:
-    kubeman render --file examples/kafka/templates.py
-    kubeman apply --file examples/kafka/templates.py
+    kubeman render --file examples/kafka/kubeman.py
+    kubeman apply --file examples/kafka/kubeman.py
 """
 
 import sys
 from pathlib import Path
 
-# Add the examples/kafka directory to the path so we can import the template modules
-_kafka_dir = Path(__file__).parent
-if str(_kafka_dir) not in sys.path:
-    sys.path.insert(0, str(_kafka_dir))
+# Add the examples/kafka/templates directory to the path so we can import the template modules
+_kafka_templates_dir = Path(__file__).parent / "templates"
+if str(_kafka_templates_dir) not in sys.path:
+    sys.path.insert(0, str(_kafka_templates_dir))
 
 # Import template classes to trigger registration via @TemplateRegistry.register decorators
 # These imports cause the decorators to execute and register the templates

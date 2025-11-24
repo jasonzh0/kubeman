@@ -31,17 +31,17 @@ cd examples/spark
 kubeman apply
 
 # Or with explicit path from project root:
-kubeman apply --file examples/spark/templates.py
+kubeman apply --file examples/spark/kubeman.py
 
 # For kind clusters, set Docker environment variables:
 DOCKER_PROJECT_ID=test-project DOCKER_REGION=us-central1 DOCKER_REPOSITORY_NAME=default \
-  kubeman apply --file examples/spark/templates.py
+  kubeman apply --file examples/spark/kubeman.py
 
 # Skip build/load steps if images are already built:
-kubeman apply --file examples/spark/templates.py --skip-build
+kubeman apply --file examples/spark/kubeman.py --skip-build
 ```
 
-**Note**: The `templates.py` file imports all template modules which automatically register themselves via the `@TemplateRegistry.register` decorator. Build and load steps execute automatically during registration, before rendering.
+**Note**: The `kubeman.py` file imports all template modules which automatically register themselves via the `@TemplateRegistry.register` decorator. Build and load steps execute automatically during registration, before rendering.
 
 ### Render Only (Without Applying)
 
@@ -53,10 +53,10 @@ cd examples/spark
 kubeman render
 
 # Or with explicit path from project root:
-kubeman render --file examples/spark/templates.py
+kubeman render --file examples/spark/kubeman.py
 
 # Optionally specify custom output directory:
-kubeman render --file examples/spark/templates.py --output-dir ./custom-manifests
+kubeman render --file examples/spark/kubeman.py --output-dir ./custom-manifests
 ```
 
 This builds the Docker image for `CustomPySparkJob` (if not skipped), loads the image into kind cluster (if not skipped), and renders all templates to the `manifests/` directory.
@@ -255,14 +255,14 @@ class CustomPySparkJob(KubernetesResource):
 
 #### 4. Register and Deploy
 
-Add the import to `templates.py`:
+Add the import to `kubeman.py`:
 ```python
 import custom_pyspark_job  # noqa: F401
 ```
 
 Deploy using kubeman:
 ```bash
-kubeman apply --file examples/spark/templates.py --namespace spark
+kubeman apply --file examples/spark/kubeman.py
 ```
 
 #### 5. View Results
@@ -278,7 +278,7 @@ kubectl logs -n spark -l spark-role=driver,sparkoperator.k8s.io/app-name=custom-
 
 **Example Files:** The example includes `pyspark_example.py`, `Dockerfile.pyspark`, and `custom_pyspark_job.py` as starting points for your own PySpark jobs.
 
-**Creating Custom Spark Applications:** You can modify the existing SparkApplication in `spark_application.py` (change `mainClass`, update `mainApplicationFile`, adjust resources) or create a new SparkApplication class following the same pattern and import it in `templates.py`.
+**Creating Custom Spark Applications:** You can modify the existing SparkApplication in `spark_application.py` (change `mainClass`, update `mainApplicationFile`, adjust resources) or create a new SparkApplication class following the same pattern and import it in `kubeman.py`.
 
 ### Spark Application Modes
 

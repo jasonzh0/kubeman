@@ -135,7 +135,7 @@ class PostgresDB(KubernetesResource):
         """Add ConfigMap with init.sql for database initialization"""
         from pathlib import Path
 
-        init_sql_path = Path(__file__).parent / "init.sql"
+        init_sql_path = Path(__file__).parent.parent / "init.sql"
         init_sql_content = init_sql_path.read_text()
 
         return [

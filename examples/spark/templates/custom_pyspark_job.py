@@ -92,7 +92,7 @@ class CustomPySparkJob(KubernetesResource):
         from pathlib import Path
         from kubeman import DockerManager
 
-        spark_dir = Path(__file__).parent
+        spark_dir = Path(__file__).parent.parent
         docker = DockerManager()
         docker.build_image(
             component="custom-pyspark-job",

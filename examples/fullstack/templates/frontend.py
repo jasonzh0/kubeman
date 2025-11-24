@@ -117,7 +117,7 @@ class FrontendApp(KubernetesResource):
         """Build Docker image for frontend app"""
         from kubeman import DockerManager
 
-        frontend_dir = Path(__file__).parent / "frontend"
+        frontend_dir = Path(__file__).parent.parent / "frontend"
         docker = DockerManager()
         docker.build_image(
             component="frontend-app",

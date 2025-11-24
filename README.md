@@ -321,24 +321,21 @@ Render templates using the CLI or Python API.
 
 ```bash
 # Render all templates from a Python file
-kubeman render --file templates.py
+kubeman render --file kubeman.py
 
 # Render without executing build steps
-kubeman render --file templates.py --skip-build
+kubeman render --file kubeman.py --skip-build
 
 # Render and apply to Kubernetes cluster (builds execute automatically)
-kubeman apply --file templates.py
-
-# Apply with a specific namespace
-kubeman apply --file templates.py --namespace my-namespace
+kubeman apply --file kubeman.py
 
 # Apply without executing build steps
-kubeman apply --file templates.py --skip-build
+kubeman apply --file kubeman.py --skip-build
 ```
 
 The CLI imports your template file (containing `@TemplateRegistry.register` decorated classes), discovers all registered templates, renders each to the `manifests/` directory, and for `apply`, runs `kubectl apply` on the rendered manifests.
 
-**Example template file (`templates.py`):**
+**Example template file (`kubeman.py`):**
 ```python
 from kubeman import KubernetesResource, TemplateRegistry
 
@@ -636,12 +633,12 @@ class MyAppResources(KubernetesResource):
 
 # Option 1: Use CLI to render and apply
 # Build steps execute automatically when templates are imported
-# kubeman render --file templates.py
-# kubeman apply --file templates.py
+# kubeman render --file kubeman.py
+# kubeman apply --file kubeman.py
 
 # Option 2: Skip build steps if images are already built
-# kubeman render --file templates.py --skip-build
-# kubeman apply --file templates.py --skip-build
+# kubeman render --file kubeman.py --skip-build
+# kubeman apply --file kubeman.py --skip-build
 
 # Option 3: Render programmatically
 for template_class in TemplateRegistry.get_registered_templates():

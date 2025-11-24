@@ -2,7 +2,7 @@
 """
 Command-line interface for kubeman.
 
-Provides commands to render and apply Kubernetes manifests using templates.py files.
+Provides commands to render and apply Kubernetes manifests using kubeman.py files.
 """
 
 import argparse
@@ -20,10 +20,10 @@ from kubeman.resource_utils import CLUSTER_SCOPED_KINDS
 
 def load_templates_file(file_path: str) -> None:
     """
-    Dynamically import a templates.py file to trigger template registration.
+    Dynamically import a kubeman.py file to trigger template registration.
 
     Args:
-        file_path: Path to the templates.py file
+        file_path: Path to the kubeman.py file
 
     Raises:
         FileNotFoundError: If the file doesn't exist
@@ -37,7 +37,13 @@ def load_templates_file(file_path: str) -> None:
     if file_path_obj.suffix != ".py":
         raise ValueError(f"Templates file must be a Python file (.py): {file_path_obj}")
 
-    module_name = file_path_obj.stem
+    # If the file is named kubeman.py, use a unique module name to avoid conflicts
+    # with the kubeman package
+    if file_path_obj.stem == "kubeman":
+        module_name = f"kubeman_templates_{id(file_path_obj)}"
+    else:
+        module_name = file_path_obj.stem
+
     spec = importlib.util.spec_from_file_location(module_name, str(file_path_obj))
     if spec is None or spec.loader is None:
         raise ImportError(f"Could not load module from file: {file_path_obj}")
@@ -340,7 +346,7 @@ def render_templates(manifests_dir: Optional[Path] = None) -> List[str]:
 
         if not templates:
             raise ValueError(
-                "No templates registered. Make sure your templates.py file registers templates using @TemplateRegistry.register"
+                "No templates registered. Make sure your kubeman.py file registers templates using @TemplateRegistry.register"
             )
 
         print(f"Found {len(templates)} registered template(s)")
@@ -365,7 +371,6 @@ def render_templates(manifests_dir: Optional[Path] = None) -> List[str]:
 
 
 def apply_manifests(
-    namespace: Optional[str] = None,
     manifests_dir: Optional[Path] = None,
     template_names: Optional[List[str]] = None,
 ) -> None:
@@ -373,7 +378,6 @@ def apply_manifests(
     Apply rendered manifests to Kubernetes cluster using kubectl.
 
     Args:
-        namespace: Optional namespace to filter or set context
         manifests_dir: Optional custom directory for manifests.
                       If None, uses default from Config.
         template_names: Optional list of template names to filter by.
@@ -427,12 +431,6 @@ def apply_manifests(
                 print(f"\nNo manifests found for registered templates: {', '.join(template_names)}")
                 return
 
-        if namespace:
-            yaml_files = _filter_manifests_by_namespace(yaml_files, namespace)
-            if not yaml_files:
-                print(f"\nNo manifests found matching namespace: {namespace}")
-                return
-
         crd_only_files, namespace_files, other_files = _categorize_yaml_files(yaml_files)
 
         crd_extracted_files = []
@@ -444,8 +442,6 @@ def apply_manifests(
                     crd_extracted_files.append(crd_file)
 
         print(f"\nApplying manifests from {manifests_dir_path}")
-        if namespace:
-            print(f"Filtering to namespace: {namespace}")
         print(f"Found {len(yaml_files)} manifest file(s)")
         total_crds = len(crd_only_files) + len(crd_extracted_files)
         if total_crds > 0:
@@ -503,7 +499,7 @@ def cmd_render(args: argparse.Namespace) -> None:
         TemplateRegistry.set_skip_builds(skip_builds)
 
         # Load templates file (imports trigger registration)
-        templates_file = args.file or "./templates.py"
+        templates_file = args.file or "./kubeman.py"
         load_templates_file(templates_file)
 
         # Get optional output directory
@@ -529,7 +525,7 @@ def cmd_apply(args: argparse.Namespace) -> None:
         skip_builds = getattr(args, "skip_build", False)
         TemplateRegistry.set_skip_builds(skip_builds)
 
-        templates_file = args.file or "./templates.py"
+        templates_file = args.file or "./kubeman.py"
         load_templates_file(templates_file)
 
         output_dir = None
@@ -542,23 +538,19 @@ def cmd_apply(args: argparse.Namespace) -> None:
         template_names = render_templates(manifests_dir=output_dir)
         print("\n✓ Templates rendered successfully")
 
-        apply_manifests(
-            namespace=args.namespace, manifests_dir=output_dir, template_names=template_names
-        )
+        apply_manifests(manifests_dir=output_dir, template_names=template_names)
     except (FileNotFoundError, ImportError, ValueError, RuntimeError) as e:
         print(f"✗ Error: {e}", file=sys.stderr)
         sys.exit(1)
 
 
 def generate_plan(
-    namespace: Optional[str] = None,
     manifests_dir: Optional[Path] = None,
 ) -> Dict[str, Any]:
     """
     Generate a plan showing what would be built, applied, and loaded.
 
     Args:
-        namespace: Optional namespace to filter manifests
         manifests_dir: Optional custom directory for manifests.
                       If None, uses default from Config.
 
@@ -635,9 +627,6 @@ def generate_plan(
                 yaml_files = _filter_manifests_by_template_names(
                     yaml_files, rendered_template_names, manifests_dir_path
                 )
-
-            if namespace:
-                yaml_files = _filter_manifests_by_namespace(yaml_files, namespace)
 
             crd_only_files, namespace_files, other_files = _categorize_yaml_files(yaml_files)
 
@@ -748,7 +737,7 @@ def cmd_plan(args: argparse.Namespace) -> None:
         TemplateRegistry.set_skip_loads(True)
 
         # Load templates file (imports trigger registration)
-        templates_file = args.file or "./templates.py"
+        templates_file = args.file or "./kubeman.py"
         load_templates_file(templates_file)
 
         # Get optional output directory
@@ -760,7 +749,7 @@ def cmd_plan(args: argparse.Namespace) -> None:
                 output_dir = None
 
         # Generate plan
-        plan = generate_plan(namespace=args.namespace, manifests_dir=output_dir)
+        plan = generate_plan(manifests_dir=output_dir)
 
         # Display plan
         verbose = getattr(args, "verbose", False)
@@ -774,18 +763,18 @@ def cmd_plan(args: argparse.Namespace) -> None:
 def main() -> None:
     """Main entry point for kubeman CLI."""
     parser = argparse.ArgumentParser(
-        description="Kubeman - Render and apply Kubernetes manifests using templates.py files",
+        description="Kubeman - Render and apply Kubernetes manifests using kubeman.py files",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  kubeman render --file examples/kafka/templates.py
-  kubeman apply --file examples/kafka/templates.py
-  kubeman plan --file examples/kafka/templates.py
+  kubeman render --file examples/kafka/kubeman.py
+  kubeman apply --file examples/kafka/kubeman.py
+  kubeman plan --file examples/kafka/kubeman.py
   kubeman render
   kubeman apply
   kubeman plan --verbose
 
-The templates.py file should import template modules to trigger registration via
+The kubeman.py file should import template modules to trigger registration via
 @TemplateRegistry.register decorators.
         """,
     )
@@ -799,7 +788,7 @@ The templates.py file should import template modules to trigger registration via
     )
     render_parser.add_argument(
         "--file",
-        help="Path to templates.py file (defaults to ./templates.py)",
+        help="Path to kubeman.py file (defaults to ./kubeman.py)",
     )
     render_parser.add_argument(
         "--output-dir",
@@ -819,15 +808,11 @@ The templates.py file should import template modules to trigger registration via
     )
     apply_parser.add_argument(
         "--file",
-        help="Path to templates.py file (defaults to ./templates.py)",
+        help="Path to kubeman.py file (defaults to ./kubeman.py)",
     )
     apply_parser.add_argument(
         "--output-dir",
         help="Output directory for manifests (defaults to ./manifests or MANIFESTS_DIR env var)",
-    )
-    apply_parser.add_argument(
-        "--namespace",
-        help="Kubernetes namespace to use for apply",
     )
     apply_parser.add_argument(
         "--skip-build",
@@ -843,15 +828,11 @@ The templates.py file should import template modules to trigger registration via
     )
     plan_parser.add_argument(
         "--file",
-        help="Path to templates.py file (defaults to ./templates.py)",
+        help="Path to kubeman.py file (defaults to ./kubeman.py)",
     )
     plan_parser.add_argument(
         "--output-dir",
         help="Output directory for manifests (defaults to ./manifests or MANIFESTS_DIR env var)",
-    )
-    plan_parser.add_argument(
-        "--namespace",
-        help="Kubernetes namespace to filter manifests",
     )
     plan_parser.add_argument(
         "--skip-build",

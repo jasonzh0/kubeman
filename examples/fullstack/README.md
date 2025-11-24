@@ -44,17 +44,17 @@ cd examples/fullstack
 kubeman apply
 
 # Or with explicit path from project root:
-kubeman apply --file examples/fullstack/templates.py
+kubeman apply --file examples/fullstack/kubeman.py
 
 # For kind clusters, set Docker environment variables:
 DOCKER_PROJECT_ID=test-project DOCKER_REGION=us-central1 DOCKER_REPOSITORY_NAME=default \
-  kubeman apply --file examples/fullstack/templates.py
+  kubeman apply --file examples/fullstack/kubeman.py
 
 # Skip build steps if images are already built:
-kubeman apply --file examples/fullstack/templates.py --skip-build
+kubeman apply --file examples/fullstack/kubeman.py --skip-build
 ```
 
-**Note**: The `templates.py` file imports all template modules which automatically register themselves via the `@TemplateRegistry.register` decorator. Build steps execute automatically during registration, before rendering.
+**Note**: The `kubeman.py` file imports all template modules which automatically register themselves via the `@TemplateRegistry.register` decorator. Build steps execute automatically during registration, before rendering.
 
 ### Render Only (Without Applying)
 
@@ -66,10 +66,10 @@ cd examples/fullstack
 kubeman render
 
 # Or with explicit path from project root:
-kubeman render --file examples/fullstack/templates.py
+kubeman render --file examples/fullstack/kubeman.py
 
 # Optionally specify custom output directory:
-kubeman render --file examples/fullstack/templates.py --output-dir ./custom-manifests
+kubeman render --file examples/fullstack/kubeman.py --output-dir ./custom-manifests
 ```
 
 This builds the Docker images for frontend and backend (if not skipped) and renders all templates to the `manifests/` directory.

@@ -98,7 +98,7 @@ class BackendAPI(KubernetesResource):
         """Build Docker image for backend API"""
         from kubeman import DockerManager
 
-        backend_dir = Path(__file__).parent / "backend"
+        backend_dir = Path(__file__).parent.parent / "backend"
         docker = DockerManager()
         docker.build_image(
             component="backend-api",

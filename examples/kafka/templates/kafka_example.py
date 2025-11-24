@@ -9,8 +9,8 @@ The deployment consists of:
 2. Kafka cluster (created via Kafka CRD)
 
 Usage:
-    kubeman render --file examples/kafka/templates.py
-    kubeman apply --file examples/kafka/templates.py
+    kubeman render --file examples/kafka/kubeman.py
+    kubeman apply --file examples/kafka/kubeman.py
     kubeman render
     kubeman apply
 """
