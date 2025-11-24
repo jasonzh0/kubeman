@@ -106,14 +106,13 @@ To modify the build or load behavior, edit `custom_pyspark_job.py`:
 ```python
 def build(self) -> None:
     """Build Docker image for custom PySpark job"""
-    from pathlib import Path
     from kubeman import DockerManager
 
-    spark_dir = Path(__file__).parent
+    context_path = self.resolve_path("..")
     docker = DockerManager()
     docker.build_image(
         component="custom-pyspark-job",
-        context_path=str(spark_dir),
+        context_path=context_path,
         tag="latest",
         dockerfile="Dockerfile.pyspark",
     )

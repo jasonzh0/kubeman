@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Union
+import inspect
 import yaml
 from kubeman.config import Config
 from kubeman.argocd import ArgoCDApplicationGenerator
@@ -109,6 +110,40 @@ class Template(ABC):
             apps_subdir=self.apps_subdirectory(),
         )
 
+    def resolve_path(self, relative_path: Union[str, Path]) -> Path:
+        """
+        Resolve a path relative to the template file's directory.
+
+        This helper method automatically resolves paths relative to where the
+        template class is defined, making it easy to reference component directories
+        without manual path construction.
+
+        Args:
+            relative_path: Path relative to the template file's directory.
+                          Can be a string or Path object.
+                          Use "../" to go up from the template file's directory.
+
+        Returns:
+            Resolved absolute Path object
+
+        Example:
+            # If template is at examples/fullstack/templates/frontend.py
+            # and you want to reference examples/fullstack/frontend/
+            context_path = self.resolve_path("../frontend")
+
+            # To reference the templates directory itself
+            templates_dir = self.resolve_path(".")
+
+        Note:
+            The path is resolved relative to the template file's directory
+            (the directory containing the template file).
+        """
+        # Get the file where this template class is defined
+        template_file = Path(inspect.getfile(self.__class__))
+        # Resolve relative to the template file's directory
+        base_dir = template_file.parent
+        return (base_dir / relative_path).resolve()
+
     def build(self) -> None:
         """
         Build Docker images for this template.
@@ -124,7 +159,9 @@ class Template(ABC):
             def build(self) -> None:
                 from kubeman import DockerManager
                 docker = DockerManager()
-                docker.build_and_push("my-component", "./path/to/context", tag="latest")
+                # Use resolve_path to automatically find component directory
+                context_path = self.resolve_path("frontend")
+                docker.build_image("my-component", context_path, tag="latest")
         """
         pass
 

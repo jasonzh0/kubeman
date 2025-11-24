@@ -5,7 +5,6 @@ This module defines Kubernetes resources for deploying the React frontend
 for the fullstack TODO application.
 """
 
-from pathlib import Path
 from kubeman import KubernetesResource, TemplateRegistry
 
 
@@ -117,11 +116,11 @@ class FrontendApp(KubernetesResource):
         """Build Docker image for frontend app"""
         from kubeman import DockerManager
 
-        frontend_dir = Path(__file__).parent.parent / "frontend"
+        context_path = self.resolve_path("../frontend")
         docker = DockerManager()
         docker.build_image(
             component="frontend-app",
-            context_path=str(frontend_dir),
+            context_path=context_path,
             tag="latest",
             dockerfile="Dockerfile",
         )

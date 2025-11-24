@@ -11,6 +11,7 @@ A Python library for rendering Helm charts and Kubernetes resources with optiona
 - `KubernetesResource` class for raw Kubernetes resources (no Helm required)
 - `TemplateRegistry` for managing multiple templates (charts and resources)
 - Command-line interface (CLI) for rendering and applying manifests
+- Resource visualization with Graphviz DOT diagrams showing resource relationships
 - Automatic Docker image build and load steps (executed sequentially during template registration)
 - Git operations for manifest repository management
 - Docker image build and push utilities with custom Dockerfile support
@@ -362,6 +363,49 @@ for template_class in templates:
 ```
 
 **For HelmChart:** Renders to `manifests/{chart-name}/{chart-name}-manifests.yaml`, writes extra manifests to `manifests/{chart-name}/`, and generates ArgoCD Application to `manifests/apps/{chart-name}-application.yaml` (if enabled).
+
+### Visualizing Resource Relationships
+
+Generate Graphviz DOT diagrams to visualize Kubernetes resources and their relationships:
+
+```bash
+# Generate visualization and save to file
+kubeman visualize --file kubeman.py --output diagram.dot
+
+# Output to stdout
+kubeman visualize --file kubeman.py
+
+# Include CustomResourceDefinitions in visualization
+kubeman visualize --file kubeman.py --output diagram.dot --show-crds
+
+# Use custom manifests directory
+kubeman visualize --file kubeman.py --output-dir ./custom-manifests --output diagram.dot
+```
+
+The visualization command:
+1. Renders templates to generate manifests (build steps are automatically skipped)
+2. Analyzes rendered manifests to detect relationships (ConfigMap references, Service selectors, network connections, etc.)
+3. Generates a Graphviz DOT diagram showing resource hierarchy and relationships
+4. Outputs to a file or stdout
+
+**Rendering the diagram:**
+
+After generating the DOT file, render it to an image using Graphviz:
+
+```bash
+# Generate PNG image
+dot -Tpng diagram.dot -o diagram.png
+
+# Generate SVG image
+dot -Tsvg diagram.dot -o diagram.svg
+```
+
+**Visualization features:**
+- Shows resources grouped by namespace
+- Displays relationships between resources (uses, selects, connects-to)
+- Includes connection addresses (e.g., database URLs from ConfigMaps)
+- Filters to only show resources from templates in your `kubeman.py` file
+- Optionally includes CustomResourceDefinitions (hidden by default)
 
 **For KubernetesResource:** Writes each manifest to `manifests/{name}/{manifest-name}-{kind}.yaml` and generates ArgoCD Application to `manifests/apps/{name}-application.yaml` (if enabled).
 

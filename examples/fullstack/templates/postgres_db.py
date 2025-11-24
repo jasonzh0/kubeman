@@ -133,9 +133,7 @@ class PostgresDB(KubernetesResource):
 
     def extra_manifests(self) -> list[dict]:
         """Add ConfigMap with init.sql for database initialization"""
-        from pathlib import Path
-
-        init_sql_path = Path(__file__).parent.parent / "init.sql"
+        init_sql_path = self.resolve_path("../init.sql")
         init_sql_content = init_sql_path.read_text()
 
         return [

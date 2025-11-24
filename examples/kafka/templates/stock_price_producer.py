@@ -91,14 +91,13 @@ class StockPriceProducer(KubernetesResource):
 
     def build(self) -> None:
         """Build Docker image for stock price producer"""
-        from pathlib import Path
         from kubeman import DockerManager
 
-        kafka_dir = Path(__file__).parent.parent
+        context_path = self.resolve_path("..")
         docker = DockerManager()
         docker.build_image(
             component="stock-price-producer",
-            context_path=str(kafka_dir),
+            context_path=context_path,
             tag="latest",
             dockerfile="Dockerfile.producer",
         )

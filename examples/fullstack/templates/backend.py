@@ -5,7 +5,6 @@ This module defines Kubernetes resources for deploying the FastAPI backend
 for the fullstack TODO application.
 """
 
-from pathlib import Path
 from kubeman import KubernetesResource, TemplateRegistry
 
 
@@ -98,11 +97,11 @@ class BackendAPI(KubernetesResource):
         """Build Docker image for backend API"""
         from kubeman import DockerManager
 
-        backend_dir = Path(__file__).parent.parent / "backend"
+        context_path = self.resolve_path("../backend")
         docker = DockerManager()
         docker.build_image(
             component="backend-api",
-            context_path=str(backend_dir),
+            context_path=context_path,
             tag="latest",
             dockerfile="Dockerfile",
         )

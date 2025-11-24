@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Union
 from kubeman.config import Config
 from kubeman.executor import CommandExecutor, get_executor
 
@@ -41,7 +41,7 @@ class DockerManager:
     def build_image(
         self,
         component: str,
-        context_path: str,
+        context_path: Union[str, Path],
         tag: Optional[str] = None,
         dockerfile: Optional[str] = None,
     ) -> str:
@@ -49,7 +49,7 @@ class DockerManager:
 
         Args:
             component: The name of the component (e.g., 'frontend')
-            context_path: Path to the Docker context
+            context_path: Path to the Docker context (str or Path)
             tag: Optional specific tag, defaults to 'latest'
             dockerfile: Optional Dockerfile name (defaults to 'Dockerfile')
 
@@ -59,7 +59,7 @@ class DockerManager:
         tag = tag or "latest"
         image_name = f"{self.registry}/{component}:{tag}"
 
-        context = Path(context_path)
+        context = Path(context_path).resolve()
         dockerfile_path = context / (dockerfile or "Dockerfile")
 
         cmd = [
@@ -95,7 +95,7 @@ class DockerManager:
     def build_and_push(
         self,
         component: str,
-        context_path: str,
+        context_path: Union[str, Path],
         tag: Optional[str] = None,
         dockerfile: Optional[str] = None,
     ) -> str:
@@ -103,7 +103,7 @@ class DockerManager:
 
         Args:
             component: The name of the component
-            context_path: Path to the Docker context
+            context_path: Path to the Docker context (str or Path)
             tag: Optional specific tag
             dockerfile: Optional Dockerfile name (defaults to 'Dockerfile')
         """
