@@ -354,7 +354,9 @@ class TestCmdRender:
 
         cmd_render(args)
 
-        mock_registry.set_skip_builds.assert_called_once_with(False)
+        # Render command always skips builds/loads (only renders manifests)
+        mock_registry.set_skip_builds.assert_called_once_with(True)
+        mock_registry.set_skip_loads.assert_called_once_with(True)
         mock_load.assert_called_once_with("/test/kubeman.py")
         mock_render.assert_called_once()
 

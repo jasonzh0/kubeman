@@ -567,8 +567,10 @@ def cmd_render(args: argparse.Namespace) -> None:
     try:
         TemplateRegistry.clear()
 
-        skip_builds = getattr(args, "skip_build", False)
-        TemplateRegistry.set_skip_builds(skip_builds)
+        # Render command skips builds/loads by default (only render manifests)
+        # Use --skip-build flag is ignored for render (builds are always skipped)
+        TemplateRegistry.set_skip_builds(True)
+        TemplateRegistry.set_skip_loads(True)
 
         # Load templates file (imports trigger registration)
         templates_file = args.file or "./kubeman.py"
@@ -604,8 +606,11 @@ def cmd_apply(args: argparse.Namespace) -> None:
     try:
         TemplateRegistry.clear()
 
+        # Apply command runs builds/loads by default unless --skip-build is specified
         skip_builds = getattr(args, "skip_build", False)
         TemplateRegistry.set_skip_builds(skip_builds)
+        # Loads are skipped if builds are skipped
+        TemplateRegistry.set_skip_loads(skip_builds)
 
         templates_file = args.file or "./kubeman.py"
         output.verbose(f"Loading templates from {templates_file}")
@@ -1002,7 +1007,7 @@ The kubeman.py file should import template modules to trigger registration via
     render_parser.add_argument(
         "--skip-build",
         action="store_true",
-        help="Skip Docker image build steps during template registration",
+        help="Skip Docker image build steps during template registration (ignored for render, always skipped)",
     )
     render_parser.add_argument(
         "--quiet",
