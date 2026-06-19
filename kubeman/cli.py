@@ -148,8 +148,11 @@ def _extract_crds_from_yaml(yaml_file: Path) -> Optional[Path]:
         if not crd_docs:
             return None
 
+        # Write to the system temp dir (NOT the manifests dir) so the extracted
+        # file never gets picked up by a later rglob and re-applied, and so it
+        # doesn't pollute the user's output. The caller unlinks it after apply.
         temp_file = tempfile.NamedTemporaryFile(
-            mode="w", suffix=".yaml", delete=False, dir=yaml_file.parent
+            mode="w", suffix=".yaml", prefix="kubeman-crd-", delete=False
         )
         for doc in crd_docs:
             yaml.dump(doc, temp_file)
@@ -477,6 +480,7 @@ def apply_manifests(
         original_dir = Template.manifests_dir()
         Template.set_manifests_dir(Path(manifests_dir).resolve())
 
+    crd_extracted_files: List[Path] = []
     try:
         executor = get_executor()
 
@@ -520,7 +524,6 @@ def apply_manifests(
 
         crd_only_files, namespace_files, other_files = _categorize_yaml_files(yaml_files)
 
-        crd_extracted_files = []
         for yaml_file in other_files:
             if _contains_crd(yaml_file):
                 crd_file = _extract_crds_from_yaml(yaml_file)
@@ -552,6 +555,13 @@ def apply_manifests(
 
         output.success(f"Successfully applied {applied_count} manifest file(s)")
     finally:
+        # Remove the temporary CRD files extracted during this apply so they
+        # don't leak into the system temp dir.
+        for temp_file in crd_extracted_files:
+            try:
+                temp_file.unlink()
+            except OSError:
+                pass
         if manifests_dir is not None:
             Template.set_manifests_dir(original_dir)
 

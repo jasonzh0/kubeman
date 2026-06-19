@@ -334,6 +334,47 @@ metadata:
         output = capsys.readouterr()
         assert "CRD file(s) will be applied first" not in output.out
 
+    @patch("kubeman.cli.get_executor")
+    def test_extracted_crd_files_are_cleaned_up(self, mock_get_executor, tmp_path):
+        """Extracted CRD temp files go to the system temp dir and are removed."""
+        mock_executor = MagicMock()
+        mock_executor.run.return_value = MagicMock(returncode=0)
+        mock_get_executor.return_value = mock_executor
+
+        # CRD + namespaced resource with an explicit namespace lands in the
+        # 'other' bucket, which triggers CRD extraction to a temp file.
+        mixed = tmp_path / "mixed.yaml"
+        mixed.write_text(
+            """---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: widgets.example.com
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cfg
+  namespace: demo
+"""
+        )
+        before = set(os.listdir(tmp_path))
+
+        with patch("kubeman.cli.Template.manifests_dir") as mock_dir:
+            mock_path = MagicMock()
+            mock_path.exists.return_value = True
+            mock_path.__str__ = lambda x: str(tmp_path)
+            mock_path.rglob.side_effect = [[mixed], []]
+            mock_dir.return_value = mock_path
+
+            apply_manifests()
+
+        # No temp file leaked into the manifests directory...
+        assert set(os.listdir(tmp_path)) == before
+        # ...and none left behind in the system temp dir.
+        leftovers = [f for f in os.listdir(tempfile.gettempdir()) if f.startswith("kubeman-crd-")]
+        assert leftovers == []
+
 
 class TestCmdRender:
     """Test cases for cmd_render function."""
