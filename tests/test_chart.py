@@ -1,10 +1,12 @@
 """Unit tests for HelmChart and KubernetesResource abstract classes."""
 
 import pytest
+import yaml
 from unittest.mock import Mock, patch, MagicMock
 from kubeman.chart import HelmChart
 from kubeman.kubernetes import KubernetesResource
 from kubeman.git import GitManager
+from kubeman.template import Template
 
 
 class ConcreteHelmChart(HelmChart):
@@ -707,3 +709,67 @@ class TestKubernetesResource:
         # Check that Application manifest was NOT created
         app_file = tmp_path / "apps" / "test-resource-application.yaml"
         assert not app_file.exists()
+
+
+class _HelmChartForRender(HelmChart):
+    @property
+    def name(self):
+        return "mychart"
+
+    @property
+    def repository(self):
+        return {"type": "oci", "remote": "oci://example.com"}
+
+    @property
+    def namespace(self):
+        return "myns"
+
+    @property
+    def version(self):
+        return "1.0.0"
+
+    def generate_values(self):
+        return {}
+
+
+class TestRenderHelm:
+    """Tests for HelmChart.render_helm namespace injection."""
+
+    def test_render_helm_skips_when_repository_none(self):
+        class NoneRepo(_HelmChartForRender):
+            @property
+            def repository(self):
+                return {"type": "none"}
+
+        with patch("kubeman.chart.get_executor") as mock_get_executor:
+            NoneRepo().render_helm()
+            mock_get_executor.assert_not_called()
+
+    @patch("kubeman.chart.get_executor")
+    def test_render_helm_injects_namespace(self, mock_get_executor, tmp_path):
+        helm_out = (
+            "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: cm\n"
+            "---\n"
+            "apiVersion: rbac.authorization.k8s.io/v1\nkind: ClusterRole\nmetadata:\n  name: cr\n"
+            "---\n"
+            "apiVersion: v1\nkind: Service\nmetadata:\n  name: svc\n  namespace: explicit\n"
+        )
+        mock_executor = MagicMock()
+        mock_executor.run.return_value = MagicMock(stdout=helm_out)
+        mock_get_executor.return_value = mock_executor
+
+        original = Template.manifests_dir()
+        Template.set_manifests_dir(tmp_path)
+        try:
+            _HelmChartForRender().render_helm()
+        finally:
+            Template.set_manifests_dir(original)
+
+        out_file = tmp_path / "mychart" / "mychart-manifests.yaml"
+        docs = {d["kind"]: d for d in yaml.safe_load_all(out_file.read_text()) if d}
+        # Namespaced resource with no namespace -> namespace injected.
+        assert docs["ConfigMap"]["metadata"]["namespace"] == "myns"
+        # Cluster-scoped resource -> never gets a namespace.
+        assert "namespace" not in docs["ClusterRole"]["metadata"]
+        # Explicit namespace is preserved.
+        assert docs["Service"]["metadata"]["namespace"] == "explicit"

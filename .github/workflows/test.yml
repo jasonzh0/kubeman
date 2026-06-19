@@ -51,7 +51,7 @@ jobs:
 
     - name: Run tests
       run: |
-        uv run pytest tests/ -v
+        uv run pytest tests/ -v --cov=kubeman --cov-report=term-missing --cov-fail-under=75
 
     - name: Check package can be imported
       run: |
