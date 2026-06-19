@@ -5,6 +5,7 @@ import inspect
 import yaml
 from kubeman.config import Config
 from kubeman.argocd import ArgoCDApplicationGenerator
+from kubeman.resource_utils import ensure_within, validate_path_component
 
 # Context variable for custom manifests directory (set by CLI)
 _custom_manifests_dir: Optional[Path] = None
@@ -211,6 +212,7 @@ class Template(ABC):
         apps_dir = manifests_dir / self.apps_subdirectory()
         apps_dir.mkdir(parents=True, exist_ok=True)
 
-        app_file = apps_dir / f"{self.name}-application.yaml"
+        validate_path_component(self.name, field="template name")
+        app_file = ensure_within(apps_dir, apps_dir / f"{self.name}-application.yaml")
         with open(app_file, "w") as f:
             yaml.dump(app, f)

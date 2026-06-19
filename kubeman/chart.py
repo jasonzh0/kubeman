@@ -4,7 +4,11 @@ import tempfile
 import yaml
 from kubeman.template import Template
 from kubeman.executor import get_executor
-from kubeman.resource_utils import CLUSTER_SCOPED_KINDS
+from kubeman.resource_utils import (
+    CLUSTER_SCOPED_KINDS,
+    safe_manifest_path,
+    validate_path_component,
+)
 from kubeman.output import get_output
 
 
@@ -197,7 +201,7 @@ class HelmChart(Template):
         manifests_dir = self.manifests_dir()
         if isinstance(manifests_dir, str):
             manifests_dir = Path(manifests_dir)
-        output_dir = manifests_dir / self.name
+        output_dir = manifests_dir / validate_path_component(self.name, field="template name")
         output_dir.mkdir(parents=True, exist_ok=True)
 
         for manifest in extra_manifests:
@@ -209,7 +213,7 @@ class HelmChart(Template):
 
             manifest_name = manifest["metadata"]["name"]
             manifest_kind = manifest["kind"].lower()
-            output_file = output_dir / f"{manifest_name}-{manifest_kind}.yaml"
+            output_file = safe_manifest_path(output_dir, manifest_name, manifest_kind)
 
             if output_file.exists():
                 output.verbose(

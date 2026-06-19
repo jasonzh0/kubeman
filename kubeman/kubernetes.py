@@ -3,6 +3,7 @@ import yaml
 from typing import Any, Optional
 from kubeman.template import Template
 from kubeman.output import get_output
+from kubeman.resource_utils import safe_manifest_path, validate_path_component
 
 
 class KubernetesResource(Template):
@@ -519,7 +520,7 @@ class KubernetesResource(Template):
         manifests_dir = self.manifests_dir()
         if isinstance(manifests_dir, str):
             manifests_dir = Path(manifests_dir)
-        output_dir = manifests_dir / self.name
+        output_dir = manifests_dir / validate_path_component(self.name, field="template name")
         output_dir.mkdir(parents=True, exist_ok=True)
 
         for manifest in all_manifests:
@@ -531,7 +532,7 @@ class KubernetesResource(Template):
 
             manifest_name = manifest["metadata"]["name"]
             manifest_kind = manifest["kind"].lower()
-            output_file = output_dir / f"{manifest_name}-{manifest_kind}.yaml"
+            output_file = safe_manifest_path(output_dir, manifest_name, manifest_kind)
 
             if output_file.exists():
                 output.verbose(
