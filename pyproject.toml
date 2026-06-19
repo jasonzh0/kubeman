@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "kubeman"
-version = "0.6.0"
+dynamic = ["version"]
 description = "A Python library for rendering Helm charts and Kubernetes resources with optional ArgoCD Application generation. Features an abstract Template base class for consistent template management."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -39,6 +39,9 @@ dev = [
     "ruff>=0.1.0",
     "pre-commit>=3.0.0",
 ]
+
+[tool.hatch.version]
+path = "kubeman/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["kubeman"]
