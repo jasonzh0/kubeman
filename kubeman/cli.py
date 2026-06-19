@@ -7,7 +7,9 @@ Provides commands to render and apply Kubernetes manifests using kubeman.py file
 
 import argparse
 import importlib.util
+import shutil
 import sys
+import tempfile
 from pathlib import Path
 from typing import Optional, Tuple, List, Dict, Any
 import yaml
@@ -132,8 +134,6 @@ def _extract_crds_from_yaml(yaml_file: Path) -> Optional[Path]:
     Returns:
         Path to temporary file with CRDs only, or None if no CRDs found
     """
-    import tempfile
-
     try:
         with open(yaml_file, "r") as f:
             documents = list(yaml.safe_load_all(f))
@@ -794,11 +794,19 @@ def generate_plan(
 
             crd_only_files, namespace_files, other_files = _categorize_yaml_files(yaml_files)
 
-            plan["manifest_files"]["crd_files"] = [str(f) for f in crd_only_files] + [
-                f"(extracted from {f})" for f in other_files if _contains_crd(f)
+            def _rel(f: Path) -> str:
+                # Display paths relative to the manifests dir so output is clean
+                # and independent of the (temporary) render location.
+                try:
+                    return str(Path(f).relative_to(manifests_dir_path))
+                except ValueError:
+                    return str(f)
+
+            plan["manifest_files"]["crd_files"] = [_rel(f) for f in crd_only_files] + [
+                f"(extracted from {_rel(f)})" for f in other_files if _contains_crd(f)
             ]
-            plan["manifest_files"]["namespace_files"] = [str(f) for f in namespace_files]
-            plan["manifest_files"]["other_files"] = [str(f) for f in other_files]
+            plan["manifest_files"]["namespace_files"] = [_rel(f) for f in namespace_files]
+            plan["manifest_files"]["other_files"] = [_rel(f) for f in other_files]
             plan["total_manifests"] = len(yaml_files)
 
     finally:
@@ -927,18 +935,14 @@ def cmd_plan(args: argparse.Namespace) -> None:
         output.verbose(f"Loading templates from {templates_file}")
         load_templates_file(templates_file)
 
-        # Get optional output directory
-        output_dir = None
-        if hasattr(args, "output_dir") and args.output_dir is not None:
-            try:
-                output_dir = Path(args.output_dir).resolve()
-                output.verbose(f"Using output directory: {output_dir}")
-            except (TypeError, AttributeError):
-                output_dir = None
-
-        # Generate plan
-        with output.spinner("Analyzing templates and generating plan"):
-            plan = generate_plan(manifests_dir=output_dir)
+        # Render into a throwaway temp dir so 'plan' is read-only with respect
+        # to the user's tree (it never writes to ./manifests or --output-dir).
+        temp_dir = Path(tempfile.mkdtemp(prefix="kubeman-plan-"))
+        try:
+            with output.spinner("Analyzing templates and generating plan"):
+                plan = generate_plan(manifests_dir=temp_dir)
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
 
         # Display plan
         verbose = getattr(args, "verbose", False) or output.verbosity >= Verbosity.VERBOSE
