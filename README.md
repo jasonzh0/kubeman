@@ -332,6 +332,37 @@ kubeman apply --file kubeman.py --skip-build
 
 The CLI imports your template file (containing `@TemplateRegistry.register` decorated classes), discovers all registered templates, renders each to the `manifests/` directory, and for `apply`, runs `kubectl apply` on the rendered manifests.
 
+#### Commands
+
+| Command | What it does |
+| --- | --- |
+| `render` | Render all registered templates to the manifests directory. Never runs build/load steps. |
+| `apply` | Render, run build/load steps, then `kubectl apply` the manifests to the current cluster. |
+| `plan` | Preview what `apply` would create (grouped by namespace) without contacting the cluster or running build/load steps. |
+| `visualize` | Render, then emit a Graphviz DOT diagram of the resources and their relationships. |
+
+#### Common flags
+
+These are accepted by every command:
+
+| Flag | Description |
+| --- | --- |
+| `--file PATH` | Path to your `kubeman.py` file (defaults to `./kubeman.py`). |
+| `--output-dir PATH` | Directory to render manifests into (defaults to `./manifests`, or the `MANIFESTS_DIR` env var). |
+| `--quiet` | Only show errors and final results. |
+| `--verbose` | Show detailed output, including file paths and executed commands. |
+
+`apply` also accepts `--skip-build` (skip build/load steps); `visualize` also accepts `--output PATH` (write the DOT diagram to a file instead of stdout) and `--show-crds` (include CustomResourceDefinitions). Run `kubeman <command> --help` for the full list, or `kubeman --version` to print the installed version.
+
+```bash
+# Preview changes without touching the cluster
+kubeman plan --file kubeman.py
+
+# Quieter / more verbose output
+kubeman apply --file kubeman.py --quiet
+kubeman render --file kubeman.py --verbose
+```
+
 **Example template file (`kubeman.py`):**
 ```python
 from kubeman import KubernetesResource, TemplateRegistry
@@ -567,6 +598,9 @@ image_name = docker.build_and_push(
 ```
 
 ## Environment Variables
+
+### General
+- `MANIFESTS_DIR` - Output directory for rendered manifests (defaults to `./manifests`). Overridden by the `--output-dir` flag.
 
 ### Required for Git Operations
 - `STABLE_GIT_COMMIT` - Current git commit hash
