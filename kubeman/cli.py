@@ -1217,8 +1217,19 @@ The kubeman.py file should import template modules to trigger registration via
     output_manager = OutputManager(verbosity=verbosity)
     set_output(output_manager)
 
-    # Call the appropriate command handler
-    args.func(args)
+    # Call the appropriate command handler. Command handlers exit(1) on known
+    # errors; this guard turns anything unexpected into a clean message + exit
+    # code instead of a raw traceback.
+    try:
+        args.func(args)
+    except SystemExit:
+        raise
+    except KeyboardInterrupt:
+        get_output().error("Interrupted")
+        sys.exit(130)
+    except Exception as e:
+        get_output().error(f"Unexpected error: {e}")
+        sys.exit(1)
 
 
 if __name__ == "__main__":

@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from kubeman.executor import CommandExecutor, get_executor
+from kubeman.executor import CommandExecutor, get_executor, _redact_cmd
 
 
 def _ok():
@@ -91,3 +91,17 @@ class TestGetExecutor:
 
     def test_returns_same_instance(self):
         assert get_executor() is get_executor()
+
+
+class TestRedactCmd:
+    def test_masks_url_credentials(self):
+        assert (
+            _redact_cmd(["git", "clone", "https://user:tok@github.com/x.git"])
+            == "git clone https://***@github.com/x.git"
+        )
+
+    def test_leaves_plain_urls_untouched(self):
+        assert (
+            _redact_cmd(["helm", "repo", "add", "r", "https://charts.example.com"])
+            == "helm repo add r https://charts.example.com"
+        )

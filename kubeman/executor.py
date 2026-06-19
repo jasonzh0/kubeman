@@ -7,6 +7,7 @@ error handling, logging, and timeouts.
 
 import subprocess
 import logging
+import re
 from typing import Optional, List, Dict, Any
 from pathlib import Path
 
@@ -17,6 +18,15 @@ logger = logging.getLogger(__name__)
 # Sentinel so callers can pass timeout=None to explicitly disable the timeout,
 # distinct from omitting it (which falls back to the executor default).
 _UNSET: Any = object()
+
+# Mask credentials embedded in URLs (e.g. https://user:token@host) before any
+# command is logged or echoed.
+_CRED_URL_RE = re.compile(r"([a-zA-Z][a-zA-Z0-9+.-]*://)[^/@\s]+@")
+
+
+def _redact_cmd(cmd: List[str]) -> str:
+    """Join a command for display, masking credentials embedded in URLs."""
+    return " ".join(_CRED_URL_RE.sub(r"\1***@", part) for part in cmd)
 
 
 class CommandExecutor:
@@ -96,8 +106,8 @@ class CommandExecutor:
         cwd_str = str(cwd) if cwd else None
         output = get_output()
 
-        logger.debug(f"Executing command: {' '.join(cmd)}")
-        output.verbose(f"Executing: {' '.join(cmd)}")
+        logger.debug(f"Executing command: {_redact_cmd(cmd)}")
+        output.verbose(f"Executing: {_redact_cmd(cmd)}")
         if cwd_str:
             logger.debug(f"Working directory: {cwd_str}")
             output.verbose(f"Working directory: {cwd_str}")
@@ -120,10 +130,10 @@ class CommandExecutor:
                 output.verbose(f"Stdout: {result.stdout}")
             return result
         except subprocess.CalledProcessError as e:
-            logger.error(f"Command failed: {' '.join(cmd)}")
+            logger.error(f"Command failed: {_redact_cmd(cmd)}")
             logger.error(f"Return code: {e.returncode}")
             output.error(
-                f"Command failed: {' '.join(cmd)}",
+                f"Command failed: {_redact_cmd(cmd)}",
                 suggestion=f"Return code: {e.returncode}. Check command syntax and permissions.",
             )
             if e.stderr:
@@ -133,9 +143,9 @@ class CommandExecutor:
                 output.verbose(f"Stdout: {e.stdout}")
             raise
         except subprocess.TimeoutExpired as e:
-            logger.error(f"Command timed out after {e.timeout}s: {' '.join(cmd)}")
+            logger.error(f"Command timed out after {e.timeout}s: {_redact_cmd(cmd)}")
             output.error(
-                f"Command timed out after {e.timeout}s: {' '.join(cmd)}",
+                f"Command timed out after {e.timeout}s: {_redact_cmd(cmd)}",
                 suggestion="Increase the timeout (CommandExecutor(timeout=...)) "
                 "or pass timeout=None to disable it for long-running commands.",
             )
