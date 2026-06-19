@@ -466,7 +466,14 @@ class TestCmdApply:
     def test_successful_apply(self, mock_registry, mock_load, mock_render, mock_apply, capsys):
         """Test successful apply command."""
         mock_render.return_value = ["template1", "template2"]
-        args = Mock(file="/test/kubeman.py", skip_build=False)
+        args = Mock(
+            file="/test/kubeman.py",
+            skip_build=False,
+            output_dir=None,
+            dry_run=False,
+            yes=True,
+            context=None,
+        )
 
         cmd_apply(args)
 
@@ -474,7 +481,10 @@ class TestCmdApply:
         mock_load.assert_called_once_with("/test/kubeman.py")
         mock_render.assert_called_once_with(manifests_dir=None)
         mock_apply.assert_called_once_with(
-            manifests_dir=None, template_names=["template1", "template2"]
+            manifests_dir=None,
+            template_names=["template1", "template2"],
+            dry_run=False,
+            context=None,
         )
 
         output = capsys.readouterr()
@@ -520,6 +530,61 @@ class TestCmdApply:
         cmd_apply(args)
 
         mock_load.assert_called_once_with("./kubeman.py")
+
+    @patch("kubeman.cli.apply_manifests")
+    @patch("kubeman.cli.render_templates")
+    @patch("kubeman.cli.load_templates_file")
+    @patch("kubeman.cli.TemplateRegistry")
+    def test_apply_dry_run_threads_flag_and_skips_prompt(
+        self, mock_registry, mock_load, mock_render, mock_apply
+    ):
+        """--dry-run is passed through and never prompts."""
+        mock_render.return_value = ["t1"]
+        args = Mock(
+            file="k.py", skip_build=False, output_dir=None, dry_run=True, yes=False, context=None
+        )
+        with patch("builtins.input") as mock_input:
+            cmd_apply(args)
+            mock_input.assert_not_called()
+        assert mock_apply.call_args.kwargs["dry_run"] is True
+
+    @patch("kubeman.cli._get_current_context", return_value="minikube")
+    @patch("sys.stdin")
+    @patch("kubeman.cli.apply_manifests")
+    @patch("kubeman.cli.render_templates")
+    @patch("kubeman.cli.load_templates_file")
+    @patch("kubeman.cli.TemplateRegistry")
+    def test_apply_prompt_abort(
+        self, mock_registry, mock_load, mock_render, mock_apply, mock_stdin, mock_ctx
+    ):
+        """Declining the TTY confirmation aborts without applying."""
+        mock_stdin.isatty.return_value = True
+        mock_render.return_value = ["t1"]
+        args = Mock(
+            file="k.py", skip_build=False, output_dir=None, dry_run=False, yes=False, context=None
+        )
+        with patch("builtins.input", return_value="n"):
+            cmd_apply(args)
+        mock_apply.assert_not_called()
+
+    @patch("kubeman.cli._get_current_context", return_value="minikube")
+    @patch("sys.stdin")
+    @patch("kubeman.cli.apply_manifests")
+    @patch("kubeman.cli.render_templates")
+    @patch("kubeman.cli.load_templates_file")
+    @patch("kubeman.cli.TemplateRegistry")
+    def test_apply_prompt_confirm(
+        self, mock_registry, mock_load, mock_render, mock_apply, mock_stdin, mock_ctx
+    ):
+        """Confirming the TTY prompt proceeds with the apply."""
+        mock_stdin.isatty.return_value = True
+        mock_render.return_value = ["t1"]
+        args = Mock(
+            file="k.py", skip_build=False, output_dir=None, dry_run=False, yes=False, context=None
+        )
+        with patch("builtins.input", return_value="y"):
+            cmd_apply(args)
+        mock_apply.assert_called_once()
 
 
 class TestMain:

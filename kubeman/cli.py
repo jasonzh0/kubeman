@@ -419,7 +419,9 @@ def render_templates(manifests_dir: Optional[Path] = None) -> List[str]:
     return rendered_template_names
 
 
-def _apply_files(files, executor, output, progress) -> int:
+def _apply_files(
+    files, executor, output, progress, *, dry_run: bool = False, context: Optional[str] = None
+) -> int:
     """
     Apply a list of manifest files with ``kubectl apply``, one file at a time.
 
@@ -431,6 +433,8 @@ def _apply_files(files, executor, output, progress) -> int:
         executor: CommandExecutor to run kubectl with
         output: Output helper for messages/progress
         progress: Active progress instance (or None in quiet mode)
+        dry_run: If True, append --dry-run=server (no cluster mutations)
+        context: kubectl context to target (None uses the ambient context)
 
     Returns:
         The number of files successfully applied
@@ -438,9 +442,15 @@ def _apply_files(files, executor, output, progress) -> int:
     Raises:
         RuntimeError: If any ``kubectl apply`` fails
     """
+    base = ["kubectl"]
+    if context:
+        base += ["--context", context]
+
     applied = 0
     for yaml_file in files:
-        cmd = ["kubectl", "apply", "-f", str(yaml_file)]
+        cmd = base + ["apply", "-f", str(yaml_file)]
+        if dry_run:
+            cmd.append("--dry-run=server")
         try:
             output.verbose(f"Applying {yaml_file.name}")
             executor.run(cmd, check=True, text=True, capture_output=True)
@@ -460,6 +470,8 @@ def _apply_files(files, executor, output, progress) -> int:
 def apply_manifests(
     manifests_dir: Optional[Path] = None,
     template_names: Optional[List[str]] = None,
+    dry_run: bool = False,
+    context: Optional[str] = None,
 ) -> None:
     """
     Apply rendered manifests to Kubernetes cluster using kubectl.
@@ -470,6 +482,8 @@ def apply_manifests(
         template_names: Optional list of template names to filter by.
                        If provided, only manifests from these templates will be applied.
                        If None, all manifests in the directory will be applied (backward compatible).
+        dry_run: If True, pass --dry-run=server to kubectl (no cluster mutations).
+        context: kubectl context to target. If None, the ambient context is used.
 
     Raises:
         FileNotFoundError: If kubectl is not found
@@ -532,6 +546,10 @@ def apply_manifests(
 
         output.section("Applying Manifests")
         output.info(f"Applying manifests from {manifests_dir_path}")
+        if context:
+            output.info(f"Target context: {context}")
+        if dry_run:
+            output.info("Dry run (--dry-run=server): no changes will be made")
         output.info(f"Found {len(yaml_files)} manifest file(s)")
         total_crds = len(crd_only_files) + len(crd_extracted_files)
         if total_crds > 0:
@@ -548,10 +566,19 @@ def apply_manifests(
         with output.progress("Applying manifests", total=total_files) as progress:
             # CRDs first, then Namespaces, then everything else.
             applied_count += _apply_files(
-                crd_only_files + crd_extracted_files, executor, output, progress
+                crd_only_files + crd_extracted_files,
+                executor,
+                output,
+                progress,
+                dry_run=dry_run,
+                context=context,
             )
-            applied_count += _apply_files(namespace_files, executor, output, progress)
-            applied_count += _apply_files(other_files, executor, output, progress)
+            applied_count += _apply_files(
+                namespace_files, executor, output, progress, dry_run=dry_run, context=context
+            )
+            applied_count += _apply_files(
+                other_files, executor, output, progress, dry_run=dry_run, context=context
+            )
 
         output.success(f"Successfully applied {applied_count} manifest file(s)")
     finally:
@@ -605,6 +632,22 @@ def cmd_render(args: argparse.Namespace) -> None:
         sys.exit(1)
 
 
+def _get_current_context() -> Optional[str]:
+    """Return the current kubectl context, or None if it can't be determined."""
+    try:
+        result = get_executor().run(
+            ["kubectl", "config", "current-context"],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+    except Exception:
+        return None
+    if getattr(result, "returncode", 1) == 0 and result.stdout:
+        return result.stdout.strip() or None
+    return None
+
+
 def cmd_apply(args: argparse.Namespace) -> None:
     """Handle the apply subcommand."""
     output = get_output()
@@ -633,7 +676,24 @@ def cmd_apply(args: argparse.Namespace) -> None:
         output.newline()
         output.success("Templates rendered successfully")
 
-        apply_manifests(manifests_dir=output_dir, template_names=template_names)
+        context = getattr(args, "context", None)
+        dry_run = getattr(args, "dry_run", False)
+
+        # Confirm before mutating a cluster, but only when attached to a TTY so
+        # CI / scripted use is not broken. --yes skips it; --dry-run is safe.
+        if not dry_run and not getattr(args, "yes", False) and sys.stdin.isatty():
+            display_ctx = context or _get_current_context() or "(current kubeconfig context)"
+            output.warning(f"About to apply manifests to context: {display_ctx}")
+            if input("Continue? [y/N] ").strip().lower() not in ("y", "yes"):
+                output.info("Aborted.")
+                return
+
+        apply_manifests(
+            manifests_dir=output_dir,
+            template_names=template_names,
+            dry_run=dry_run,
+            context=context,
+        )
     except FileNotFoundError as e:
         output.error(f"Error: {e}")
         sys.exit(1)
@@ -1063,6 +1123,21 @@ The kubeman.py file should import template modules to trigger registration via
         "--verbose",
         action="store_true",
         help="Show detailed output including file paths and command execution",
+    )
+    apply_parser.add_argument(
+        "-y",
+        "--yes",
+        action="store_true",
+        help="Skip the interactive confirmation prompt",
+    )
+    apply_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Run 'kubectl apply --dry-run=server' without mutating the cluster",
+    )
+    apply_parser.add_argument(
+        "--context",
+        help="kubectl context to apply to (defaults to the current context)",
     )
     apply_parser.set_defaults(func=cmd_apply)
 

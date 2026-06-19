@@ -352,7 +352,16 @@ These are accepted by every command:
 | `--quiet` | Only show errors and final results. |
 | `--verbose` | Show detailed output, including file paths and executed commands. |
 
-`apply` also accepts `--skip-build` (skip build/load steps); `visualize` also accepts `--output PATH` (write the DOT diagram to a file instead of stdout) and `--show-crds` (include CustomResourceDefinitions). Run `kubeman <command> --help` for the full list, or `kubeman --version` to print the installed version.
+`apply` also accepts:
+
+| Flag | Description |
+| --- | --- |
+| `--skip-build` | Skip build/load steps (e.g. images already built). |
+| `-y`, `--yes` | Skip the interactive confirmation prompt. |
+| `--dry-run` | Run `kubectl apply --dry-run=server` — validates against the cluster without changing anything. |
+| `--context NAME` | Target a specific kubectl context instead of the current one. |
+
+When run interactively, `apply` echoes the target context and asks for confirmation before touching the cluster; in non-interactive use (CI/scripts) it proceeds without prompting. `visualize` also accepts `--output PATH` (write the DOT diagram to a file instead of stdout) and `--show-crds` (include CustomResourceDefinitions). Run `kubeman <command> --help` for the full list, or `kubeman --version` to print the installed version.
 
 ```bash
 # Preview changes without touching the cluster
