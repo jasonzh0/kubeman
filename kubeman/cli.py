@@ -416,6 +416,44 @@ def render_templates(manifests_dir: Optional[Path] = None) -> List[str]:
     return rendered_template_names
 
 
+def _apply_files(files, executor, output, progress) -> int:
+    """
+    Apply a list of manifest files with ``kubectl apply``, one file at a time.
+
+    Kept per-file (rather than a single batched invocation) so failures point
+    at the exact file and progress advances per file.
+
+    Args:
+        files: Manifest file paths to apply, in order
+        executor: CommandExecutor to run kubectl with
+        output: Output helper for messages/progress
+        progress: Active progress instance (or None in quiet mode)
+
+    Returns:
+        The number of files successfully applied
+
+    Raises:
+        RuntimeError: If any ``kubectl apply`` fails
+    """
+    applied = 0
+    for yaml_file in files:
+        cmd = ["kubectl", "apply", "-f", str(yaml_file)]
+        try:
+            output.verbose(f"Applying {yaml_file.name}")
+            executor.run(cmd, check=True, text=True, capture_output=True)
+            applied += 1
+            if progress:
+                progress.update(progress.tasks[0].id, advance=1)
+        except Exception as e:
+            error_msg = str(e)
+            output.error(
+                f"Failed to apply {yaml_file}",
+                suggestion="Check kubectl configuration and cluster connectivity",
+            )
+            raise RuntimeError(f"kubectl apply failed for {yaml_file}: {error_msg}") from e
+    return applied
+
+
 def apply_manifests(
     manifests_dir: Optional[Path] = None,
     template_names: Optional[List[str]] = None,
@@ -505,54 +543,12 @@ def apply_manifests(
         total_files = len(all_files)
 
         with output.progress("Applying manifests", total=total_files) as progress:
-            for yaml_file in crd_only_files + crd_extracted_files:
-                cmd = ["kubectl", "apply", "-f", str(yaml_file)]
-                try:
-                    output.verbose(f"Applying {yaml_file.name}")
-                    executor.run(cmd, check=True, text=True, capture_output=True)
-                    applied_count += 1
-                    if progress:
-                        progress.update(progress.tasks[0].id, advance=1)
-                except Exception as e:
-                    error_msg = str(e)
-                    output.error(
-                        f"Failed to apply {yaml_file}",
-                        suggestion="Check kubectl configuration and cluster connectivity",
-                    )
-                    raise RuntimeError(f"kubectl apply failed for {yaml_file}: {error_msg}") from e
-
-            for yaml_file in namespace_files:
-                cmd = ["kubectl", "apply", "-f", str(yaml_file)]
-                try:
-                    output.verbose(f"Applying {yaml_file.name}")
-                    executor.run(cmd, check=True, text=True, capture_output=True)
-                    applied_count += 1
-                    if progress:
-                        progress.update(progress.tasks[0].id, advance=1)
-                except Exception as e:
-                    error_msg = str(e)
-                    output.error(
-                        f"Failed to apply {yaml_file}",
-                        suggestion="Check kubectl configuration and cluster connectivity",
-                    )
-                    raise RuntimeError(f"kubectl apply failed for {yaml_file}: {error_msg}") from e
-
-            for yaml_file in other_files:
-                cmd = ["kubectl", "apply", "-f", str(yaml_file)]
-
-                try:
-                    output.verbose(f"Applying {yaml_file.name}")
-                    executor.run(cmd, check=True, text=True, capture_output=True)
-                    applied_count += 1
-                    if progress:
-                        progress.update(progress.tasks[0].id, advance=1)
-                except Exception as e:
-                    error_msg = str(e)
-                    output.error(
-                        f"Failed to apply {yaml_file}",
-                        suggestion="Check kubectl configuration and cluster connectivity",
-                    )
-                    raise RuntimeError(f"kubectl apply failed for {yaml_file}: {error_msg}") from e
+            # CRDs first, then Namespaces, then everything else.
+            applied_count += _apply_files(
+                crd_only_files + crd_extracted_files, executor, output, progress
+            )
+            applied_count += _apply_files(namespace_files, executor, output, progress)
+            applied_count += _apply_files(other_files, executor, output, progress)
 
         output.success(f"Successfully applied {applied_count} manifest file(s)")
     finally:
