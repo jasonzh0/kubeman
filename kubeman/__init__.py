@@ -8,7 +8,7 @@ from kubeman.kubernetes import KubernetesResource
 from kubeman.register import TemplateRegistry
 from kubeman.git import GitManager
 from kubeman.docker import DockerManager
-from kubeman.executor import CommandExecutor, get_executor
+from kubeman.executor import CommandExecutor, get_executor, set_executor
 from kubeman.config import Config, config
 from kubeman.argocd import ArgoCDApplicationGenerator
 from kubeman.cli import render_templates, apply_manifests
@@ -22,6 +22,7 @@ __all__ = [
     "DockerManager",
     "CommandExecutor",
     "get_executor",
+    "set_executor",
     "Config",
     "config",
     "ArgoCDApplicationGenerator",

@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from kubeman.executor import CommandExecutor, get_executor, _redact_cmd
+from kubeman.executor import CommandExecutor, get_executor, set_executor, _redact_cmd
 
 
 def _ok():
@@ -91,6 +91,16 @@ class TestGetExecutor:
 
     def test_returns_same_instance(self):
         assert get_executor() is get_executor()
+
+    def test_set_executor_overrides_and_restores(self):
+        original = get_executor()
+        try:
+            fake = CommandExecutor(timeout=1)
+            set_executor(fake)
+            assert get_executor() is fake
+        finally:
+            set_executor(original)
+        assert get_executor() is original
 
 
 class TestRedactCmd:

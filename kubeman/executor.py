@@ -196,3 +196,17 @@ def get_executor() -> CommandExecutor:
         Default CommandExecutor instance
     """
     return _default_executor
+
+
+def set_executor(executor: CommandExecutor) -> None:
+    """
+    Override the global default command executor.
+
+    Useful for tests (inject a fake) and for embedding kubeman in another
+    process that needs custom subprocess behavior (timeouts, logging, etc.).
+
+    Args:
+        executor: The CommandExecutor to use as the new global default
+    """
+    global _default_executor
+    _default_executor = executor
