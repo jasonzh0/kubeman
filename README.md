@@ -12,7 +12,7 @@ A Python library for rendering Helm charts and Kubernetes resources with optiona
 - `TemplateRegistry` for managing multiple templates (charts and resources)
 - Command-line interface (CLI) for rendering and applying manifests
 - Resource visualization with Graphviz DOT diagrams showing resource relationships
-- Automatic Docker image build and load steps (executed sequentially during template registration)
+- Optional Docker image build and load steps, executed during `kubeman apply` (skipped for `render`, `plan`, and `visualize`)
 - Git operations for manifest repository management
 - Docker image build and push utilities with custom Dockerfile support
 - Optional ArgoCD Application manifest generation (opt-in)
@@ -62,7 +62,7 @@ uv run python -m pre_commit install
 
 ### Template Architecture
 
-Both `HelmChart` and `KubernetesResource` inherit from the abstract `Template` base class, providing common functionality for ArgoCD Application generation (opt-in), manifest directory management, namespace/name properties, rendering to filesystem, and optional Docker image build steps executed sequentially during template registration.
+Both `HelmChart` and `KubernetesResource` inherit from the abstract `Template` base class, providing common functionality for ArgoCD Application generation (opt-in), manifest directory management, namespace/name properties, rendering to filesystem, and optional Docker image build steps executed during `kubeman apply`.
 
 ### Creating a Helm Chart
 
@@ -268,7 +268,7 @@ class MyAppResources(KubernetesResource):
 
 ### Build and Load Steps
 
-Templates can define Docker image build and load steps that execute automatically when templates are imported. Steps run sequentially in registration order: build steps first, then load steps.
+Templates can define Docker image build and load steps. These run **only during `kubeman apply`** — `render`, `plan`, and `visualize` never execute them. When they do run, steps execute sequentially in registration order: build steps first, then load steps.
 
 #### Build Steps
 
@@ -311,7 +311,7 @@ def load(self) -> None:
     docker.kind_load_image("my-app", tag="latest")
 ```
 
-**Key points:** Build steps execute automatically when templates are imported. Load steps execute after build steps. Use `--skip-build` flag to skip build/load steps during render/apply. If a build or load fails, template registration fails with a clear error message.
+**Key points:** Build and load steps run only during `kubeman apply` (load steps after build steps). Pass `--skip-build` to `apply` to skip them, e.g. when the images are already built and pushed. `render`, `plan`, and `visualize` always skip them. If a build or load fails, `apply` aborts with a clear error message.
 
 ### Rendering Charts and Resources
 
@@ -320,16 +320,13 @@ Render templates using the CLI or Python API.
 #### Using the CLI (Recommended)
 
 ```bash
-# Render all templates from a Python file
+# Render all templates from a Python file (never builds images)
 kubeman render --file kubeman.py
 
-# Render without executing build steps
-kubeman render --file kubeman.py --skip-build
-
-# Render and apply to Kubernetes cluster (builds execute automatically)
+# Apply to the current cluster — build and load steps run here
 kubeman apply --file kubeman.py
 
-# Apply without executing build steps
+# Apply without running build/load steps (e.g. images already built)
 kubeman apply --file kubeman.py --skip-build
 ```
 
@@ -675,12 +672,11 @@ class MyAppResources(KubernetesResource):
         ]
 
 # Option 1: Use CLI to render and apply
-# Build steps execute automatically when templates are imported
+# Build/load steps run during apply (not render)
 # kubeman render --file kubeman.py
 # kubeman apply --file kubeman.py
 
-# Option 2: Skip build steps if images are already built
-# kubeman render --file kubeman.py --skip-build
+# Option 2: Skip build/load steps if images are already built
 # kubeman apply --file kubeman.py --skip-build
 
 # Option 3: Render programmatically
