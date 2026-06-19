@@ -11,6 +11,7 @@ import re
 import yaml
 from collections import defaultdict
 from kubeman.output import get_output
+from kubeman.resource_utils import WORKLOAD_KINDS
 
 
 class ResourceNode:
@@ -221,7 +222,7 @@ class ResourceAnalyzer:
         kind = resource.kind
         manifest = resource.manifest
 
-        if kind == "Deployment" or kind == "StatefulSet" or kind == "Job" or kind == "DaemonSet":
+        if kind in WORKLOAD_KINDS:
             self._extract_pod_spec_relationships(resource, manifest)
         elif kind == "Service":
             self._extract_service_relationships(resource, manifest)
@@ -363,9 +364,9 @@ class ResourceAnalyzer:
         if not selector:
             return
 
-        # Find deployments/statefulsets with matching labels
+        # Find workloads with matching labels
         for other_resource in self.resources.values():
-            if other_resource.kind not in ["Deployment", "StatefulSet", "DaemonSet"]:
+            if other_resource.kind not in WORKLOAD_KINDS:
                 continue
 
             if other_resource.namespace != resource.namespace:
@@ -492,12 +493,7 @@ class ResourceAnalyzer:
 
     def _resource_uses_configmap(self, resource: ResourceNode, configmap: ResourceNode) -> bool:
         """Check if a resource uses a specific ConfigMap."""
-        if not resource.manifest or resource.kind not in [
-            "Deployment",
-            "StatefulSet",
-            "Job",
-            "DaemonSet",
-        ]:
+        if not resource.manifest or resource.kind not in WORKLOAD_KINDS:
             return False
 
         spec = resource.manifest.get("spec", {})

@@ -10,6 +10,15 @@ from pathlib import Path
 # directory (e.g. "../../etc/cron.d/evil").
 _SAFE_NAME = re.compile(r"^[A-Za-z0-9._-]+$")
 
+# Workload kinds that own a Pod template (and so can be targeted by a Service
+# selector, reference ConfigMaps, etc.).
+WORKLOAD_KINDS = [
+    "Deployment",
+    "StatefulSet",
+    "DaemonSet",
+    "Job",
+]
+
 # Cluster-scoped resource kinds that don't belong to a namespace
 CLUSTER_SCOPED_KINDS = [
     "CustomResourceDefinition",
