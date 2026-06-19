@@ -212,14 +212,14 @@ class TemplateRegistry:
         return [template_class for template_class in cls._templates if predicate(template_class)]
 
     @classmethod
-    def group_by_namespace(cls) -> Dict[str, List[Type[Template]]]:
+    def group_by_namespace(cls) -> Dict[Optional[str], List[Type[Template]]]:
         """
         Group templates by namespace.
 
         Returns:
             Dictionary mapping namespace to list of template classes
         """
-        grouped: Dict[str, List[Type[Template]]] = {}
+        grouped: Dict[Optional[str], List[Type[Template]]] = {}
         for template_class in cls._templates:
             namespace = cls._get_template_namespace(template_class)
             if namespace not in grouped:

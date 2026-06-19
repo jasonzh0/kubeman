@@ -95,7 +95,7 @@ class KubernetesResource(Template):
             annotations: Optional annotations for the namespace
         """
         namespace_name = name or self._get_namespace()
-        manifest = {
+        manifest: dict[str, Any] = {
             "apiVersion": "v1",
             "kind": "Namespace",
             "metadata": {"name": namespace_name},
@@ -117,7 +117,7 @@ class KubernetesResource(Template):
     ) -> None:
         """Add a ConfigMap resource"""
         ns = self._get_namespace(namespace)
-        manifest = {
+        manifest: dict[str, Any] = {
             "apiVersion": "v1",
             "kind": "ConfigMap",
             "metadata": {"name": name, "namespace": ns},
@@ -144,7 +144,7 @@ class KubernetesResource(Template):
     ) -> None:
         """Add a Secret resource"""
         ns = self._get_namespace(namespace)
-        manifest = {
+        manifest: dict[str, Any] = {
             "apiVersion": "v1",
             "kind": "Secret",
             "metadata": {"name": name, "namespace": ns},
@@ -173,7 +173,7 @@ class KubernetesResource(Template):
     ) -> None:
         """Add a PersistentVolumeClaim resource"""
         ns = self._get_namespace(namespace)
-        manifest = {
+        manifest: dict[str, Any] = {
             "apiVersion": "v1",
             "kind": "PersistentVolumeClaim",
             "metadata": {"name": name, "namespace": ns},
@@ -211,7 +211,7 @@ class KubernetesResource(Template):
         pod_labels = labels or {}
         pod_selector = selector or pod_labels
 
-        manifest = {
+        manifest: dict[str, Any] = {
             "apiVersion": "apps/v1",
             "kind": "Deployment",
             "metadata": {"name": name, "namespace": ns},
@@ -256,7 +256,7 @@ class KubernetesResource(Template):
     ) -> None:
         """Add a Service resource"""
         ns = self._get_namespace(namespace)
-        manifest = {
+        manifest: dict[str, Any] = {
             "apiVersion": "v1",
             "kind": "Service",
             "metadata": {"name": name, "namespace": ns},
@@ -297,7 +297,7 @@ class KubernetesResource(Template):
         pod_labels = labels or {}
         pod_selector = selector or pod_labels
 
-        manifest = {
+        manifest: dict[str, Any] = {
             "apiVersion": "apps/v1",
             "kind": "StatefulSet",
             "metadata": {"name": name, "namespace": ns},
@@ -341,7 +341,7 @@ class KubernetesResource(Template):
     ) -> None:
         """Add an Ingress resource"""
         ns = self._get_namespace(namespace)
-        manifest = {
+        manifest: dict[str, Any] = {
             "apiVersion": "networking.k8s.io/v1",
             "kind": "Ingress",
             "metadata": {"name": name, "namespace": ns},
@@ -366,7 +366,7 @@ class KubernetesResource(Template):
     ) -> None:
         """Add a ServiceAccount resource"""
         ns = self._get_namespace(namespace)
-        manifest = {
+        manifest: dict[str, Any] = {
             "apiVersion": "v1",
             "kind": "ServiceAccount",
             "metadata": {"name": name, "namespace": ns},
@@ -387,7 +387,7 @@ class KubernetesResource(Template):
     ) -> None:
         """Add a Role resource"""
         ns = self._get_namespace(namespace)
-        manifest = {
+        manifest: dict[str, Any] = {
             "apiVersion": "rbac.authorization.k8s.io/v1",
             "kind": "Role",
             "metadata": {"name": name, "namespace": ns},
@@ -411,7 +411,7 @@ class KubernetesResource(Template):
     ) -> None:
         """Add a RoleBinding resource"""
         ns = self._get_namespace(namespace)
-        manifest = {
+        manifest: dict[str, Any] = {
             "apiVersion": "rbac.authorization.k8s.io/v1",
             "kind": "RoleBinding",
             "metadata": {"name": name, "namespace": ns},
@@ -436,7 +436,7 @@ class KubernetesResource(Template):
         annotations: Optional[dict[str, str]] = None,
     ) -> None:
         """Add a ClusterRole resource"""
-        manifest = {
+        manifest: dict[str, Any] = {
             "apiVersion": "rbac.authorization.k8s.io/v1",
             "kind": "ClusterRole",
             "metadata": {"name": name},
@@ -457,7 +457,7 @@ class KubernetesResource(Template):
         annotations: Optional[dict[str, str]] = None,
     ) -> None:
         """Add a ClusterRoleBinding resource"""
-        manifest = {
+        manifest: dict[str, Any] = {
             "apiVersion": "rbac.authorization.k8s.io/v1",
             "kind": "ClusterRoleBinding",
             "metadata": {"name": name},

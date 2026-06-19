@@ -168,7 +168,7 @@ class OutputManager:
     def rule(self, title: Optional[str] = None) -> None:
         """Print a horizontal rule."""
         if self.verbosity != Verbosity.QUIET:
-            self.console.rule(title)
+            self.console.rule(title or "")
 
     def newline(self) -> None:
         """Print a newline."""

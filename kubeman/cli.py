@@ -884,19 +884,21 @@ def display_plan(plan: Dict[str, Any], verbose: bool = False) -> None:
     total_manifests = plan["total_manifests"]
 
     if total_manifests > 0:
-        rows = []
+        apply_rows: List[List[str]] = []
         if crd_count > 0:
             if verbose:
                 for file_path in manifest_files["crd_files"]:
-                    rows.append([f"CRD ({crd_count} total)", file_path])
+                    apply_rows.append([f"CRD ({crd_count} total)", file_path])
             else:
-                rows.append([f"CRD ({crd_count} total)", f"{crd_count} file(s) - applied first"])
+                apply_rows.append(
+                    [f"CRD ({crd_count} total)", f"{crd_count} file(s) - applied first"]
+                )
         if namespace_count > 0:
             if verbose:
                 for file_path in manifest_files["namespace_files"]:
-                    rows.append([f"Namespace ({namespace_count} total)", file_path])
+                    apply_rows.append([f"Namespace ({namespace_count} total)", file_path])
             else:
-                rows.append(
+                apply_rows.append(
                     [
                         f"Namespace ({namespace_count} total)",
                         f"{namespace_count} file(s) - applied next",
@@ -905,14 +907,14 @@ def display_plan(plan: Dict[str, Any], verbose: bool = False) -> None:
         if other_count > 0:
             if verbose:
                 for file_path in manifest_files["other_files"]:
-                    rows.append([f"Other ({other_count} total)", file_path])
+                    apply_rows.append([f"Other ({other_count} total)", file_path])
             else:
-                rows.append([f"Other ({other_count} total)", f"{other_count} file(s)"])
+                apply_rows.append([f"Other ({other_count} total)", f"{other_count} file(s)"])
 
         output.table(
             title=f"⚙️  Apply Operations ({total_manifests} total manifest file(s))",
             columns=["Type", "Details"],
-            rows=rows,
+            rows=apply_rows,
         )
     else:
         output.info("⚙️  Apply Operations: No manifests would be applied")

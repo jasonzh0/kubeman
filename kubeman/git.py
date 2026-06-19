@@ -1,6 +1,7 @@
 import tempfile
 import shutil
 from pathlib import Path
+from typing import Optional
 from kubeman.config import Config
 from kubeman.executor import CommandExecutor, get_executor
 from kubeman.output import get_output
@@ -13,7 +14,7 @@ class GitManager:
     Provides methods to push rendered manifests to a Git repository.
     """
 
-    def __init__(self, executor: CommandExecutor = None):
+    def __init__(self, executor: Optional[CommandExecutor] = None):
         """
         Initialize the GitManager.
 
@@ -58,7 +59,7 @@ class GitManager:
         """
         return Path(Config.rendered_manifest_dir())
 
-    def push_manifests(self, repo_url: str = None) -> None:
+    def push_manifests(self, repo_url: Optional[str] = None) -> None:
         """
         Check out the manifests repository, switch to the current branch,
         copy manifests, create a commit, and push the changes.
