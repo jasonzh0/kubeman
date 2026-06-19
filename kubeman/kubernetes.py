@@ -44,7 +44,10 @@ class KubernetesResource(Template):
     def namespace(self) -> str:
         """Return the namespace where resources should be deployed"""
         if self._namespace is None:
-            raise ValueError("Namespace must be set before calling render()")
+            raise ValueError(
+                "namespace is not set on this resource; set self.namespace = ... "
+                "(e.g. in __init__) before rendering"
+            )
         return self._namespace
 
     @namespace.setter

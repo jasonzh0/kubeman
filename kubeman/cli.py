@@ -1089,11 +1089,6 @@ The kubeman.py file should import template modules to trigger registration via
         help="Output directory for manifests (defaults to ./manifests or MANIFESTS_DIR env var)",
     )
     render_parser.add_argument(
-        "--skip-build",
-        action="store_true",
-        help="Skip Docker image build steps during template registration (ignored for render, always skipped)",
-    )
-    render_parser.add_argument(
         "--quiet",
         action="store_true",
         help="Only show errors and final results",
@@ -1164,11 +1159,6 @@ The kubeman.py file should import template modules to trigger registration via
         help="Output directory for manifests (defaults to ./manifests or MANIFESTS_DIR env var)",
     )
     plan_parser.add_argument(
-        "--skip-build",
-        action="store_true",
-        help="Skip Docker image build steps during template registration (ignored for plan, always skipped)",
-    )
-    plan_parser.add_argument(
         "--quiet",
         action="store_true",
         help="Only show errors and final results",
@@ -1196,11 +1186,6 @@ The kubeman.py file should import template modules to trigger registration via
     visualize_parser.add_argument(
         "--output",
         help="Output file for DOT diagram (defaults to stdout)",
-    )
-    visualize_parser.add_argument(
-        "--skip-build",
-        action="store_true",
-        help="Skip Docker image build steps during template registration (ignored for visualize, always skipped)",
     )
     visualize_parser.add_argument(
         "--show-crds",
