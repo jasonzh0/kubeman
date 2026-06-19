@@ -970,7 +970,11 @@ def cmd_visualize(args: argparse.Namespace) -> None:
 
 def main() -> None:
     """Main entry point for kubeman CLI."""
+    # Imported lazily: __init__ imports this module before defining __version__.
+    from kubeman import __version__
+
     parser = argparse.ArgumentParser(
+        prog="kubeman",
         description="Kubeman - Render and apply Kubernetes manifests using kubeman.py files",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
@@ -986,6 +990,12 @@ Examples:
 The kubeman.py file should import template modules to trigger registration via
 @TemplateRegistry.register decorators.
         """,
+    )
+
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"%(prog)s {__version__}",
     )
 
     subparsers = parser.add_subparsers(dest="command", help="Available commands", required=True)
