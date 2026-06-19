@@ -32,9 +32,14 @@ dependencies = [
 [project.scripts]
 kubeman = "kubeman.cli:main"
 
+[project.urls]
+Homepage = "https://github.com/jasonzh0/kubeman"
+Repository = "https://github.com/jasonzh0/kubeman"
+Issues = "https://github.com/jasonzh0/kubeman/issues"
+
 [project.optional-dependencies]
 dev = [
-    "pytest>=7.0",
+    "pytest>=8.0",
     "pytest-cov>=4.0",
     "black>=24.0",
     "ruff>=0.1.0",
@@ -105,7 +110,14 @@ addopts = "-v --tb=short"
 kubeman = { workspace = true }
 
 [dependency-groups]
+# Mirrors [project.optional-dependencies].dev so `uv sync` (default) installs
+# the full toolchain. ("kubeman" makes uv install the project itself editable.)
 dev = [
     "kubeman",
-    "pytest>=8.3.5",
+    "pytest>=8.0",
+    "pytest-cov>=4.0",
+    "black>=24.0",
+    "ruff>=0.1.0",
+    "mypy>=1.0",
+    "pre-commit>=3.0.0",
 ]
