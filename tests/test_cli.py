@@ -478,6 +478,7 @@ class TestCmdApply:
         cmd_apply(args)
 
         mock_registry.set_skip_builds.assert_called_once_with(False)
+        mock_registry.run_build_steps.assert_called_once()
         mock_load.assert_called_once_with("/test/kubeman.py")
         mock_render.assert_called_once_with(manifests_dir=None)
         mock_apply.assert_called_once_with(

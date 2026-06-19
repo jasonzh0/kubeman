@@ -664,6 +664,9 @@ def cmd_apply(args: argparse.Namespace) -> None:
         output.verbose(f"Loading templates from {templates_file}")
         load_templates_file(templates_file)
 
+        # Run build/load steps now (explicitly), not as an import side effect.
+        TemplateRegistry.run_build_steps()
+
         output_dir = None
         if hasattr(args, "output_dir") and args.output_dir is not None:
             try:

@@ -83,12 +83,11 @@ class TemplateRegistry:
     @classmethod
     def register(cls, template_class: Type[Template]) -> Type[Template]:
         """
-        Register a template class.
-        Can be used as a decorator or called directly.
+        Register a template class. Can be used as a decorator or called directly.
 
-        If the template has a build() method, it will be executed sequentially
-        during registration (unless builds are skipped). If the template has a
-        load() method, it will be executed after build steps (unless loads are skipped).
+        Registration only records the class. Any build()/load() steps run later
+        via :meth:`run_build_steps` (e.g. during ``kubeman apply``) rather than
+        as a side effect of importing the templates file.
 
         Args:
             template_class: Template class to register
@@ -98,12 +97,34 @@ class TemplateRegistry:
         """
         if template_class not in cls._templates:
             cls._templates.append(template_class)
+        return template_class
 
-            if not cls._skip_builds and cls._has_custom_build(template_class):
+    @classmethod
+    def run_build_steps(
+        cls, skip_builds: Optional[bool] = None, skip_loads: Optional[bool] = None
+    ) -> None:
+        """
+        Run build() then load() for each registered template, in registration order.
+
+        Call this explicitly (e.g. from the ``apply`` command). Registration
+        itself has no side effects, so importing a templates file never shells
+        out to Docker/kind.
+
+        Args:
+            skip_builds: Skip build steps. Defaults to the set_skip_builds() flag.
+            skip_loads: Skip load steps. Defaults to the set_skip_loads() flag.
+
+        Raises:
+            RuntimeError: If a build or load step fails
+        """
+        skip_builds = cls._skip_builds if skip_builds is None else skip_builds
+        skip_loads = cls._skip_loads if skip_loads is None else skip_loads
+
+        for template_class in cls._templates:
+            if not skip_builds and cls._has_custom_build(template_class):
                 try:
                     logger.info(f"Executing build step for template: {template_class.__name__}")
-                    template_instance = template_class()
-                    template_instance.build()
+                    template_class().build()
                     logger.info(f"✓ Build step completed for template: {template_class.__name__}")
                 except Exception as e:
                     logger.error(
@@ -114,11 +135,10 @@ class TemplateRegistry:
                         f"Build step failed for template {template_class.__name__}: {e}"
                     ) from e
 
-            if not cls._skip_loads and cls._has_custom_load(template_class):
+            if not skip_loads and cls._has_custom_load(template_class):
                 try:
                     logger.info(f"Executing load step for template: {template_class.__name__}")
-                    template_instance = template_class()
-                    template_instance.load()
+                    template_class().load()
                     logger.info(f"✓ Load step completed for template: {template_class.__name__}")
                 except Exception as e:
                     logger.error(
@@ -128,8 +148,6 @@ class TemplateRegistry:
                     raise RuntimeError(
                         f"Load step failed for template {template_class.__name__}: {e}"
                     ) from e
-
-        return template_class
 
     @classmethod
     def get_registered_templates(cls) -> List[Type[Template]]:

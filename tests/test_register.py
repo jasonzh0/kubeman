@@ -155,8 +155,31 @@ class TestTemplateRegistry:
         TemplateRegistry.clear()
         assert len(TemplateRegistry.get_registered_templates()) == 0
 
-    def test_register_executes_build_step(self, monkeypatch):
-        """Test that build() method is executed during registration."""
+    def test_register_does_not_build(self, monkeypatch):
+        """Registration must NOT execute build() (no import-time side effects)."""
+        from kubeman.kubernetes import KubernetesResource
+
+        TemplateRegistry.clear()
+
+        build_called = []
+
+        @TemplateRegistry.register
+        class TestResource(KubernetesResource):
+            def __init__(self):
+                super().__init__()
+                self.name = "test-resource"
+                self.namespace = "default"
+
+            def build(self):
+                build_called.append(True)
+
+            def render(self):
+                pass
+
+        assert build_called == []
+
+    def test_run_build_steps_executes_build(self, monkeypatch):
+        """Test that build() runs when run_build_steps() is called."""
         from kubeman.kubernetes import KubernetesResource
 
         TemplateRegistry.clear()
@@ -177,17 +200,15 @@ class TestTemplateRegistry:
             def render(self):
                 pass
 
-        assert len(build_called) == 1
-        assert build_called[0] is True
+        TemplateRegistry.run_build_steps()
+        assert build_called == [True]
 
-    def test_register_skips_build_when_skipped(self, monkeypatch):
+    def test_run_build_steps_skips_build_when_skipped(self, monkeypatch):
         """Test that build() is skipped when skip_builds is True."""
         from kubeman.kubernetes import KubernetesResource
 
         build_called = []
 
-        TemplateRegistry.set_skip_builds(True)
-
         @TemplateRegistry.register
         class TestResource(KubernetesResource):
             def __init__(self):
@@ -201,16 +222,16 @@ class TestTemplateRegistry:
             def render(self):
                 pass
 
-        assert len(build_called) == 0
+        TemplateRegistry.run_build_steps(skip_builds=True)
+        assert build_called == []
 
-        TemplateRegistry.set_skip_builds(False)
-
-    def test_register_build_step_failure(self, monkeypatch):
-        """Test that build step failure raises error."""
+    def test_run_build_steps_build_failure(self, monkeypatch):
+        """Test that a build step failure raises a clear error."""
         from kubeman.kubernetes import KubernetesResource
 
         TemplateRegistry.clear()
 
+        @TemplateRegistry.register
         class TestResource(KubernetesResource):
             def __init__(self):
                 super().__init__()
@@ -224,7 +245,7 @@ class TestTemplateRegistry:
                 pass
 
         with pytest.raises(RuntimeError, match="Build step failed for template"):
-            TemplateRegistry.register(TestResource)
+            TemplateRegistry.run_build_steps()
 
     def test_register_no_build_method(self, monkeypatch):
         """Test that templates without build() method work normally."""
