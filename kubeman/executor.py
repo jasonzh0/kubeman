@@ -2,7 +2,7 @@
 Command execution abstraction for consistent subprocess handling.
 
 Provides a unified interface for executing shell commands with consistent
-error handling, logging, and retry logic.
+error handling, logging, and timeouts.
 """
 
 import subprocess
@@ -14,6 +14,10 @@ from kubeman.output import get_output
 
 logger = logging.getLogger(__name__)
 
+# Sentinel so callers can pass timeout=None to explicitly disable the timeout,
+# distinct from omitting it (which falls back to the executor default).
+_UNSET: Any = object()
+
 
 class CommandExecutor:
     """
@@ -23,7 +27,16 @@ class CommandExecutor:
     making it easier to test, mock, and extend command execution behavior.
     """
 
-    def __init__(self, check: bool = True, capture_output: bool = False, text: bool = True):
+    #: Default per-command timeout in seconds. None disables the timeout.
+    DEFAULT_TIMEOUT: Optional[float] = 300
+
+    def __init__(
+        self,
+        check: bool = True,
+        capture_output: bool = False,
+        text: bool = True,
+        timeout: Optional[float] = DEFAULT_TIMEOUT,
+    ):
         """
         Initialize the command executor.
 
@@ -31,10 +44,12 @@ class CommandExecutor:
             check: If True, raise CalledProcessError on non-zero exit codes
             capture_output: If True, capture stdout and stderr
             text: If True, return strings instead of bytes
+            timeout: Default per-command timeout in seconds (None to disable)
         """
         self.check = check
         self.capture_output = capture_output
         self.text = text
+        self.timeout = timeout
 
     def run(
         self,
@@ -45,6 +60,7 @@ class CommandExecutor:
         capture_output: Optional[bool] = None,
         text: Optional[bool] = None,
         input: Optional[str] = None,
+        timeout: Any = _UNSET,
         **kwargs: Any,
     ) -> subprocess.CompletedProcess:
         """
@@ -58,6 +74,8 @@ class CommandExecutor:
             capture_output: Override default capture_output behavior
             text: Override default text behavior
             input: Input to send to stdin
+            timeout: Seconds before the command is killed. Omit to use the
+                executor default; pass None to disable.
             **kwargs: Additional arguments to pass to subprocess.run
 
         Returns:
@@ -65,12 +83,14 @@ class CommandExecutor:
 
         Raises:
             subprocess.CalledProcessError: If check=True and command fails
+            subprocess.TimeoutExpired: If the command exceeds the timeout
             FileNotFoundError: If command executable is not found
         """
         # Use instance defaults if not overridden
         check = check if check is not None else self.check
         capture_output = capture_output if capture_output is not None else self.capture_output
         text = text if text is not None else self.text
+        timeout = self.timeout if timeout is _UNSET else timeout
 
         # Convert Path to string for cwd
         cwd_str = str(cwd) if cwd else None
@@ -91,6 +111,7 @@ class CommandExecutor:
                 capture_output=capture_output,
                 text=text,
                 input=input,
+                timeout=timeout,
                 **kwargs,
             )
             logger.debug(f"Command completed with return code: {result.returncode}")
@@ -110,6 +131,14 @@ class CommandExecutor:
                 output.verbose(f"Stderr: {e.stderr}")
             if e.stdout:
                 output.verbose(f"Stdout: {e.stdout}")
+            raise
+        except subprocess.TimeoutExpired as e:
+            logger.error(f"Command timed out after {e.timeout}s: {' '.join(cmd)}")
+            output.error(
+                f"Command timed out after {e.timeout}s: {' '.join(cmd)}",
+                suggestion="Increase the timeout (CommandExecutor(timeout=...)) "
+                "or pass timeout=None to disable it for long-running commands.",
+            )
             raise
         except FileNotFoundError:
             logger.error(f"Command not found: {cmd[0]}")
