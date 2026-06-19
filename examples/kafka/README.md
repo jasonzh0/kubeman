@@ -316,4 +316,4 @@ kubectl get endpoints -n kafka
 - [Strimzi Kafka Operator](https://github.com/strimzi/strimzi-kafka-operator) - Official Strimzi repository
 - [Strimzi Documentation](https://strimzi.io/) - Official Strimzi documentation
 - [Apache Kafka Documentation](https://kafka.apache.org/documentation/)
-- [kubeman Documentation](../README.md)
+- [kubeman Documentation](../../README.md)

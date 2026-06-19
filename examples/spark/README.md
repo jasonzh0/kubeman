@@ -404,4 +404,4 @@ If pods are pending due to resource constraints:
 - [Kubeflow Spark Operator Documentation](https://github.com/kubeflow/spark-operator)
 - [Apache Spark on Kubernetes Documentation](https://spark.apache.org/docs/latest/running-on-kubernetes.html)
 - [Spark Application CRD Specification](https://github.com/kubeflow/spark-operator/blob/master/docs/api-docs.md)
-- [kubeman Documentation](../README.md)
+- [kubeman Documentation](../../README.md)
