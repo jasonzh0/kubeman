@@ -111,7 +111,7 @@ class CommandExecutor:
             if e.stdout:
                 output.verbose(f"Stdout: {e.stdout}")
             raise
-        except FileNotFoundError as e:
+        except FileNotFoundError:
             logger.error(f"Command not found: {cmd[0]}")
             output.error(
                 f"Command not found: {cmd[0]}",

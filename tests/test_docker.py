@@ -1,8 +1,7 @@
 """Unit tests for DockerManager."""
 
-import os
 import pytest
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, MagicMock
 from kubeman.docker import DockerManager
 
 

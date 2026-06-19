@@ -483,7 +483,6 @@ def apply_manifests(
         crd_only_files, namespace_files, other_files = _categorize_yaml_files(yaml_files)
 
         crd_extracted_files = []
-        files_to_remove = []
         for yaml_file in other_files:
             if _contains_crd(yaml_file):
                 crd_file = _extract_crds_from_yaml(yaml_file)
@@ -703,7 +702,7 @@ def generate_plan(
                 template = template_class()
                 template.render()
                 rendered_template_names.append(template.name)
-            except Exception as e:
+            except Exception:
                 # Continue with other templates even if one fails
                 # The plan should show what would succeed
                 continue

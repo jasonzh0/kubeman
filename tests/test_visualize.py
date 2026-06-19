@@ -1,10 +1,8 @@
 """Unit tests for visualization module and CLI command."""
 
-import tempfile
 from pathlib import Path
 from unittest.mock import Mock, patch, MagicMock
 import pytest
-import yaml
 
 from kubeman.cli import cmd_visualize
 from kubeman.register import TemplateRegistry

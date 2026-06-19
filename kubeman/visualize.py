@@ -7,7 +7,6 @@ and generate visual diagrams showing the hierarchy and dependencies.
 
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
-import sys
 import re
 import yaml
 from collections import defaultdict
@@ -723,9 +722,9 @@ class DOTGenerator:
 
             lines.append(f"    subgraph {cluster_id} {{")
             lines.append(f'        label="Namespace: {namespace_name}";')
-            lines.append(f'        style="filled";')
+            lines.append('        style="filled";')
             lines.append(f'        color="{color}";')
-            lines.append(f'        fontcolor="black";')
+            lines.append('        fontcolor="black";')
             lines.append("")
 
             resources = self.namespace_to_resources[namespace_name]

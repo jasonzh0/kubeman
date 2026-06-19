@@ -4,7 +4,6 @@ ArgoCD Application manifest generation.
 Extracted from template.py to separate ArgoCD concerns from core template logic.
 """
 
-import os
 from typing import Optional, Dict, Any
 from kubeman.config import Config
 

@@ -58,7 +58,7 @@ def main():
     kafka_topic = os.getenv("KAFKA_TOPIC", "stock-prices")
     fetch_interval = int(os.getenv("FETCH_INTERVAL", "5"))
 
-    print(f"Starting Stock Price Producer")
+    print("Starting Stock Price Producer")
     print(f"  Symbols: {stock_symbols}")
     print(f"  Kafka Broker: {kafka_broker}")
     print(f"  Kafka Topic: {kafka_topic}")

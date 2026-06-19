@@ -1,10 +1,9 @@
 """Unit tests for GitManager."""
 
 import pytest
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, MagicMock
 from pathlib import Path
 from kubeman.git import GitManager
-from kubeman.config import Config
 
 
 class TestGitManager:

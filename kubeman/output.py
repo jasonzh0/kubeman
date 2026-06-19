@@ -6,14 +6,13 @@ CLI output with colors, progress bars, spinners, and formatted messages.
 """
 
 from enum import IntEnum
-from typing import Optional, List, Dict, Any, Iterator, ContextManager
+from typing import Optional, List, Iterator
 from contextlib import contextmanager
 
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskID
 from rich.table import Table
 from rich.panel import Panel
-from rich.text import Text
 from rich import box
 
 
@@ -134,7 +133,7 @@ class OutputManager:
             console=self.console,
             transient=False,
         ) as progress:
-            task_id = progress.add_task(description, total=total)
+            progress.add_task(description, total=total)
             self._current_progress = progress
             try:
                 yield progress

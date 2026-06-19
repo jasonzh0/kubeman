@@ -2,7 +2,6 @@
 
 import pytest
 from kubeman import KubernetesResource, TemplateRegistry
-from kubeman.resource_utils import CLUSTER_SCOPED_KINDS, is_cluster_scoped
 
 
 class TestKubernetesResource:

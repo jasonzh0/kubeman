@@ -1,6 +1,5 @@
 """Unit tests for HelmChart and KubernetesResource abstract classes."""
 
-import os
 import pytest
 from unittest.mock import Mock, patch, MagicMock
 from kubeman.chart import HelmChart
@@ -111,7 +110,6 @@ class TestHelmChart:
 
     def test_generate_application(self, monkeypatch):
         """Test generating ArgoCD Application manifest when enabled."""
-        chart = ConcreteHelmChart()
         monkeypatch.setenv("ARGOCD_APP_REPO_URL", "https://github.com/test/repo")
         monkeypatch.setenv("STABLE_GIT_BRANCH", "main")
 
@@ -150,7 +148,6 @@ class TestHelmChart:
 
     def test_generate_application_disabled(self, monkeypatch):
         """Test that generate_application returns None if ArgoCD is disabled."""
-        chart = ConcreteHelmChart()
         monkeypatch.setenv("ARGOCD_APP_REPO_URL", "https://github.com/test/repo")
 
         class DisabledChart(ConcreteHelmChart):
@@ -173,7 +170,6 @@ class TestHelmChart:
 
     def test_generate_application_opt_in_via_env(self, monkeypatch):
         """Test that ArgoCD can be enabled via environment variable."""
-        chart = ConcreteHelmChart()
         monkeypatch.setenv("ARGOCD_APP_REPO_URL", "https://github.com/test/repo")
         monkeypatch.setenv("STABLE_GIT_BRANCH", "main")
 
@@ -485,7 +481,6 @@ class TestKubernetesResource:
 
     def test_generate_application(self, monkeypatch):
         """Test generating ArgoCD Application manifest when enabled."""
-        resource = ConcreteKubernetesResource()
         monkeypatch.setenv("ARGOCD_APP_REPO_URL", "https://github.com/test/repo")
         monkeypatch.setenv("STABLE_GIT_BRANCH", "main")
 
@@ -524,7 +519,6 @@ class TestKubernetesResource:
 
     def test_generate_application_disabled(self, monkeypatch):
         """Test that generate_application returns None if ArgoCD is disabled."""
-        resource = ConcreteKubernetesResource()
         monkeypatch.setenv("ARGOCD_APP_REPO_URL", "https://github.com/test/repo")
 
         class DisabledResource(ConcreteKubernetesResource):
@@ -547,7 +541,6 @@ class TestKubernetesResource:
 
     def test_generate_application_opt_in_via_env(self, monkeypatch):
         """Test that ArgoCD can be enabled via environment variable."""
-        resource = ConcreteKubernetesResource()
         monkeypatch.setenv("ARGOCD_APP_REPO_URL", "https://github.com/test/repo")
         monkeypatch.setenv("STABLE_GIT_BRANCH", "main")
 
@@ -675,7 +668,6 @@ class TestKubernetesResource:
 
     def test_render(self, tmp_path, monkeypatch):
         """Test full render process with ArgoCD enabled."""
-        resource = ConcreteKubernetesResource()
         monkeypatch.setenv("ARGOCD_APP_REPO_URL", "https://github.com/test/repo")
         monkeypatch.setenv("STABLE_GIT_BRANCH", "main")
 

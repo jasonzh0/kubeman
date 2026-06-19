@@ -1,9 +1,7 @@
 """Unit tests for CLI module."""
 
 import os
-import sys
 import tempfile
-from pathlib import Path
 from unittest.mock import Mock, patch, MagicMock
 import pytest
 
@@ -15,7 +13,6 @@ from kubeman.cli import (
 )
 from kubeman.cli import render_templates, apply_manifests
 from kubeman.register import TemplateRegistry
-from kubeman.template import Template
 
 
 class TestLoadTemplatesFile:

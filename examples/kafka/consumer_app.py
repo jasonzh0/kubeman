@@ -7,8 +7,7 @@ Consumes stock prices from Kafka and processes them.
 
 import json
 import os
-from datetime import datetime
-from typing import Dict, List
+from typing import Dict
 
 from kafka import KafkaConsumer
 from kafka.errors import KafkaError
@@ -34,7 +33,7 @@ def main():
     kafka_topic = os.getenv("KAFKA_TOPIC", "stock-prices")
     consumer_group = os.getenv("CONSUMER_GROUP", "stock-price-processors")
 
-    print(f"Starting Stock Price Consumer")
+    print("Starting Stock Price Consumer")
     print(f"  Kafka Broker: {kafka_broker}")
     print(f"  Kafka Topic: {kafka_topic}")
     print(f"  Consumer Group: {consumer_group}")
