@@ -30,4 +30,4 @@ __all__ = [
     "apply_manifests",
 ]
 
-__version__ = "$new"
+__version__ = "0.7.0"
