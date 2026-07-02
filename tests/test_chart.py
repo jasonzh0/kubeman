@@ -131,6 +131,8 @@ class TestHelmChart:
         assert app["spec"]["source"]["repoURL"] == "https://github.com/test/repo"
         assert app["spec"]["source"]["targetRevision"] == "main"
         assert app["spec"]["source"]["path"] == "test-chart"
+        assert app["spec"]["project"] == "default"
+        assert app["spec"]["destination"]["server"] == "https://kubernetes.default.svc"
         assert app["spec"]["destination"]["namespace"] == "test-namespace"
         assert app["spec"]["syncPolicy"]["automated"]["prune"] is True
         assert app["spec"]["syncPolicy"]["automated"]["selfHeal"] is True
@@ -210,6 +212,39 @@ class TestHelmChart:
             "label1": "value1",
             "label2": "value2",
         }
+
+    def test_application_hook_defaults(self):
+        """Test defaults for the path/project/destination server hooks."""
+        chart = ConcreteHelmChart()
+        assert chart.application_path() == "test-chart"
+        assert chart.application_project() == "default"
+        assert chart.application_destination_server() == "https://kubernetes.default.svc"
+
+    def test_generate_application_hook_overrides(self, monkeypatch):
+        """Test that path/project/destination server overrides flow into the manifest."""
+        monkeypatch.setenv("ARGOCD_APP_REPO_URL", "https://github.com/test/repo")
+        monkeypatch.setenv("STABLE_GIT_BRANCH", "main")
+
+        class CustomizedChart(ConcreteHelmChart):
+            def enable_argocd(self):
+                return True
+
+            def application_path(self):
+                return f"manifests/{self.name}"
+
+            def application_project(self):
+                return "platform"
+
+            def application_destination_server(self):
+                return "https://prod-cluster.example.com"
+
+        with patch.object(GitManager, "fetch_branch_name", return_value="main"):
+            app = CustomizedChart().generate_application()
+
+        assert app is not None
+        assert app["spec"]["source"]["path"] == "manifests/test-chart"
+        assert app["spec"]["project"] == "platform"
+        assert app["spec"]["destination"]["server"] == "https://prod-cluster.example.com"
 
     def test_extra_manifests_default(self):
         """Test that extra_manifests returns empty list by default."""
@@ -773,3 +808,47 @@ class TestRenderHelm:
         assert "namespace" not in docs["ClusterRole"]["metadata"]
         # Explicit namespace is preserved.
         assert docs["Service"]["metadata"]["namespace"] == "explicit"
+
+    def test_split_helm_output_default_off(self):
+        """Helm output stays a single combined file unless opted in."""
+        assert _HelmChartForRender().split_helm_output() is False
+
+    @patch("kubeman.chart.get_executor")
+    def test_render_helm_split_output(self, mock_get_executor, tmp_path):
+        helm_out = (
+            "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: cm\n"
+            "---\n"
+            "apiVersion: v1\nkind: Service\nmetadata:\n  name: svc\n"
+            "---\n"
+            # Same name+kind in another namespace -> grouped in one file.
+            "apiVersion: v1\nkind: Service\nmetadata:\n  name: svc\n  namespace: other\n"
+            "---\n"
+            # No metadata.name -> falls back to the combined file.
+            "apiVersion: v1\nkind: List\nitems: []\n"
+        )
+        mock_executor = MagicMock()
+        mock_executor.run.return_value = MagicMock(stdout=helm_out)
+        mock_get_executor.return_value = mock_executor
+
+        class SplitChart(_HelmChartForRender):
+            def split_helm_output(self):
+                return True
+
+        original = Template.manifests_dir()
+        Template.set_manifests_dir(tmp_path)
+        try:
+            SplitChart().render_helm()
+        finally:
+            Template.set_manifests_dir(original)
+
+        out_dir = tmp_path / "mychart"
+        cm_docs = list(yaml.safe_load_all((out_dir / "cm-configmap.yaml").read_text()))
+        assert len(cm_docs) == 1
+        assert cm_docs[0]["metadata"]["namespace"] == "myns"
+
+        svc_docs = list(yaml.safe_load_all((out_dir / "svc-service.yaml").read_text()))
+        assert {d["metadata"]["namespace"] for d in svc_docs} == {"myns", "other"}
+
+        fallback_docs = list(yaml.safe_load_all((out_dir / "mychart-manifests.yaml").read_text()))
+        assert len(fallback_docs) == 1
+        assert fallback_docs[0]["kind"] == "List"

@@ -84,6 +84,32 @@ class Template(ABC):
         """Return managed namespace metadata labels. Override to customize."""
         return {}
 
+    def application_path(self) -> str:
+        """
+        Return the path used for the Application's spec.source.path.
+
+        Defaults to the template name, which matches the layout GitManager
+        pushes to a dedicated manifest repository (the manifests directory's
+        contents become the repo root). When committing rendered manifests
+        inside the source repository instead, override this to the path of
+        the template's manifest directory relative to the repo root, e.g.
+        ``f"manifests/{self.name}"``.
+        """
+        return self.name
+
+    def application_project(self) -> str:
+        """Return the Argo CD project for the Application. Override to customize."""
+        return "default"
+
+    def application_destination_server(self) -> str:
+        """
+        Return the destination cluster API server for the Application.
+
+        Defaults to the in-cluster server. Override when Argo CD runs in a
+        management cluster and deploys to a different cluster.
+        """
+        return "https://kubernetes.default.svc"
+
     def apps_subdirectory(self) -> str:
         """Return the subdirectory name for applications. Override to customize."""
         return Config.argocd_apps_subdir()
@@ -105,10 +131,12 @@ class Template(ABC):
         return generator.generate(
             repo_url=self.application_repo_url() or None,
             target_revision=self.application_target_revision(),
-            path=self.name,
+            path=self.application_path(),
             ignore_differences=self.argo_ignore_spec() or None,
             managed_namespace_metadata=self.managed_namespace_metadata() or None,
             apps_subdir=self.apps_subdirectory(),
+            project=self.application_project(),
+            destination_server=self.application_destination_server(),
         )
 
     def resolve_path(self, relative_path: Union[str, Path]) -> Path:

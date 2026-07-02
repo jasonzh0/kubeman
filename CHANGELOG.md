@@ -4,9 +4,20 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.7.0] - 2026-07-01
 
 ### Added
+- Overridable Argo CD Application hooks on `Template`: `application_path()`
+  (spec.source.path, for single-repo layouts where manifests live under e.g.
+  `manifests/<name>`), `application_project()` (spec.project), and
+  `application_destination_server()` (spec.destination.server, for management
+  clusters deploying elsewhere).
+- `HelmChart.split_helm_output()` (opt-in): write helm output as one file per
+  resource (`<name>-<kind>.yaml`, like `KubernetesResource`) instead of a
+  single combined `<name>-manifests.yaml`, keeping diffs reviewable.
+- The CLI now puts the templates file's directory on `sys.path`, so
+  multi-module layouts (`from templates.backend import Backend` next to
+  `kubeman.py`) work without `sys.path` boilerplate.
 - `kubeman --version` and a proper `kubeman` program name in help output.
 - `apply` now supports `--dry-run` (`kubectl apply --dry-run=server`),
   `--context`, and an interactive confirmation prompt (skipped in

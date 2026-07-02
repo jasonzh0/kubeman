@@ -77,6 +77,15 @@ def load_templates_file(file_path: str) -> None:
     if file_path_obj.suffix != ".py":
         raise ValueError(f"Templates file must be a Python file (.py): {file_path_obj}")
 
+    # Make sibling modules importable so multi-module layouts (e.g.
+    # `from templates.backend import Backend` next to kubeman.py) work
+    # without sys.path boilerplate in the templates file itself. Appended
+    # (not prepended) so files next to kubeman.py can't shadow installed
+    # packages the CLI has yet to import.
+    parent_dir = str(file_path_obj.parent)
+    if parent_dir not in sys.path:
+        sys.path.append(parent_dir)
+
     # If the file is named kubeman.py, use a unique module name to avoid conflicts
     # with the kubeman package
     if file_path_obj.stem == "kubeman":

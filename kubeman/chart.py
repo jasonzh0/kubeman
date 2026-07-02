@@ -62,6 +62,14 @@ class HelmChart(Template):
         """Return any additional manifests that should be rendered with this chart"""
         return []
 
+    def split_helm_output(self) -> bool:
+        """
+        Return whether helm output should be split into one file per resource
+        (``<metadata.name>-<kind>.yaml``, like KubernetesResource) instead of a
+        single ``<name>-manifests.yaml``. Defaults to False (opt-in).
+        """
+        return False
+
     def render(self) -> None:
         """
         Render both helm chart and extra manifests.
@@ -178,13 +186,55 @@ class HelmChart(Template):
                     manifests_dir = Path(manifests_dir)
                 output_dir = manifests_dir / self.name
                 output_dir.mkdir(parents=True, exist_ok=True)
-                output_file = output_dir / f"{self.name}-manifests.yaml"
 
-                output.verbose(f"Writing helm output to {output_file}")
-                with open(output_file, "w") as f:
-                    f.write(output_content)
+                if self.split_helm_output():
+                    self._write_split_helm_output(output_content, output_dir)
+                else:
+                    output_file = output_dir / f"{self.name}-manifests.yaml"
+                    output.verbose(f"Writing helm output to {output_file}")
+                    with open(output_file, "w") as f:
+                        f.write(output_content)
             except Exception as e:
                 raise RuntimeError(f"Helm template failed: {e}")
+
+    def _write_split_helm_output(self, output_content: str, output_dir: Path) -> None:
+        """
+        Write helm output as one file per resource (``<name>-<kind>.yaml``).
+
+        Resources sharing a name and kind (e.g. across namespaces) are grouped
+        into the same file as a multi-document YAML. Documents without a usable
+        metadata.name/kind fall back to ``<chart name>-manifests.yaml``.
+        """
+        output = get_output()
+        grouped: dict[Path, list] = {}
+        fallback_docs: list = []
+
+        for doc in yaml.safe_load_all(output_content):
+            if doc is None:
+                continue
+            metadata = doc.get("metadata", {}) if isinstance(doc, dict) else {}
+            manifest_name = metadata.get("name") if isinstance(metadata, dict) else None
+            manifest_kind = doc.get("kind") if isinstance(doc, dict) else None
+            if not isinstance(manifest_name, str) or not isinstance(manifest_kind, str):
+                fallback_docs.append(doc)
+                continue
+            try:
+                output_file = safe_manifest_path(output_dir, manifest_name, manifest_kind.lower())
+            except ValueError:
+                fallback_docs.append(doc)
+                continue
+            grouped.setdefault(output_file, []).append(doc)
+
+        output.verbose(f"Splitting helm output for {self.name} into {len(grouped)} file(s)")
+        for output_file, docs in grouped.items():
+            with open(output_file, "w") as f:
+                yaml.dump_all(docs, f)
+
+        if fallback_docs:
+            fallback_file = output_dir / f"{self.name}-manifests.yaml"
+            output.verbose(f"Writing {len(fallback_docs)} unnamed document(s) to {fallback_file}")
+            with open(fallback_file, "w") as f:
+                yaml.dump_all(fallback_docs, f)
 
     def render_extra(self) -> None:
         """

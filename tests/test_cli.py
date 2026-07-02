@@ -50,6 +50,17 @@ class TestLoadTemplatesFile:
         with pytest.raises(ImportError, match="Error importing templates file"):
             load_templates_file(str(templates_file))
 
+    def test_sibling_modules_importable(self, tmp_path):
+        """The templates file's directory is on sys.path so sibling imports work."""
+        (tmp_path / "templates_pkg_for_cli_test").mkdir()
+        (tmp_path / "templates_pkg_for_cli_test" / "__init__.py").write_text("MARKER = 42")
+        templates_file = tmp_path / "kubeman.py"
+        templates_file.write_text(
+            "from templates_pkg_for_cli_test import MARKER\nassert MARKER == 42"
+        )
+
+        load_templates_file(str(templates_file))
+
 
 class TestRenderTemplates:
     """Test cases for render_templates function."""

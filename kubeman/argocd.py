@@ -34,6 +34,8 @@ class ArgoCDApplicationGenerator:
         ignore_differences: Optional[list] = None,
         managed_namespace_metadata: Optional[Dict[str, str]] = None,
         apps_subdir: Optional[str] = None,
+        project: Optional[str] = None,
+        destination_server: Optional[str] = None,
     ) -> Optional[Dict[str, Any]]:
         """
         Generate an ArgoCD Application manifest.
@@ -45,6 +47,9 @@ class ArgoCDApplicationGenerator:
             ignore_differences: List of ignore difference specs
             managed_namespace_metadata: Labels to add to managed namespaces
             apps_subdir: Subdirectory for applications (defaults to "apps")
+            project: Argo CD project (defaults to "default")
+            destination_server: Destination cluster API server (defaults to
+                the in-cluster server)
 
         Returns:
             ArgoCD Application manifest dict or None if repo_url is not set
@@ -74,14 +79,14 @@ class ArgoCDApplicationGenerator:
                 "namespace": "argocd",  # ArgoCD applications always live in argocd namespace
             },
             "spec": {
-                "project": "default",
+                "project": project or "default",
                 "source": {
                     "repoURL": repo_url,
                     "targetRevision": target_revision,
                     "path": path,
                 },
                 "destination": {
-                    "server": "https://kubernetes.default.svc",
+                    "server": destination_server or "https://kubernetes.default.svc",
                     "namespace": self.namespace,
                 },
                 "syncPolicy": {
