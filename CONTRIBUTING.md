@@ -35,8 +35,8 @@ uv run pytest --cov=kubeman --cov-report=term-missing
 
 ## Supported Python versions
 
-kubeman targets Python 3.10+ and is tested in CI on 3.10–3.13. Avoid syntax or
-stdlib features newer than 3.10.
+kubeman targets Python 3.11+ and is tested in CI on 3.11–3.14. Avoid syntax or
+stdlib features newer than 3.11.
 
 ## Versioning and releases
 
