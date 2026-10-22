@@ -4,7 +4,6 @@ import os
 from typing import AsyncGenerator
 import asyncpg
 
-
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
     "postgresql://todos_user:todos_password@postgres:5432/todos_db",

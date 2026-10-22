@@ -111,8 +111,7 @@ class TestResourceAnalyzer:
         manifest_dir.mkdir()
 
         deployment_file = manifest_dir / "app-deployment.yaml"
-        deployment_file.write_text(
-            """apiVersion: apps/v1
+        deployment_file.write_text("""apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: app
@@ -124,8 +123,7 @@ spec:
       containers:
       - name: app
         image: nginx
-"""
-        )
+""")
 
         analyzer = ResourceAnalyzer(manifest_dir)
         namespace_to_resources, relationships = analyzer.analyze()
@@ -142,21 +140,18 @@ spec:
 
         # Create ConfigMap
         cm_file = manifest_dir / "config-configmap.yaml"
-        cm_file.write_text(
-            """apiVersion: v1
+        cm_file.write_text("""apiVersion: v1
 kind: ConfigMap
 metadata:
   name: app-config
   namespace: default
 data:
   KEY: value
-"""
-        )
+""")
 
         # Create Deployment that uses ConfigMap
         deployment_file = manifest_dir / "app-deployment.yaml"
-        deployment_file.write_text(
-            """apiVersion: apps/v1
+        deployment_file.write_text("""apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: app
@@ -173,8 +168,7 @@ spec:
             configMapKeyRef:
               name: app-config
               key: KEY
-"""
-        )
+""")
 
         analyzer = ResourceAnalyzer(manifest_dir)
         namespace_to_resources, relationships = analyzer.analyze()
@@ -195,8 +189,7 @@ spec:
 
         # Create Deployment
         deployment_file = manifest_dir / "app-deployment.yaml"
-        deployment_file.write_text(
-            """apiVersion: apps/v1
+        deployment_file.write_text("""apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: app
@@ -210,13 +203,11 @@ spec:
       containers:
       - name: app
         image: nginx
-"""
-        )
+""")
 
         # Create Service with matching selector
         service_file = manifest_dir / "app-service.yaml"
-        service_file.write_text(
-            """apiVersion: v1
+        service_file.write_text("""apiVersion: v1
 kind: Service
 metadata:
   name: app
@@ -226,8 +217,7 @@ spec:
     app: myapp
   ports:
   - port: 80
-"""
-        )
+""")
 
         analyzer = ResourceAnalyzer(manifest_dir)
         namespace_to_resources, relationships = analyzer.analyze()
@@ -247,21 +237,18 @@ spec:
 
         # Create ConfigMap with database URL
         cm_file = manifest_dir / "config-configmap.yaml"
-        cm_file.write_text(
-            """apiVersion: v1
+        cm_file.write_text("""apiVersion: v1
 kind: ConfigMap
 metadata:
   name: app-config
   namespace: default
 data:
   DATABASE_URL: "postgresql://user:pass@postgres:5432/db"
-"""
-        )
+""")
 
         # Create Service
         service_file = manifest_dir / "postgres-service.yaml"
-        service_file.write_text(
-            """apiVersion: v1
+        service_file.write_text("""apiVersion: v1
 kind: Service
 metadata:
   name: postgres
@@ -269,13 +256,11 @@ metadata:
 spec:
   ports:
   - port: 5432
-"""
-        )
+""")
 
         # Create Deployment that uses ConfigMap
         deployment_file = manifest_dir / "app-deployment.yaml"
-        deployment_file.write_text(
-            """apiVersion: apps/v1
+        deployment_file.write_text("""apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: app
@@ -292,8 +277,7 @@ spec:
             configMapKeyRef:
               name: app-config
               key: DATABASE_URL
-"""
-        )
+""")
 
         analyzer = ResourceAnalyzer(manifest_dir)
         namespace_to_resources, relationships = analyzer.analyze()
@@ -321,8 +305,7 @@ spec:
         template2_dir.mkdir()
 
         # Create resources in template1
-        (template1_dir / "app-deployment.yaml").write_text(
-            """apiVersion: apps/v1
+        (template1_dir / "app-deployment.yaml").write_text("""apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: app1
@@ -333,12 +316,10 @@ spec:
       containers:
       - name: app
         image: nginx
-"""
-        )
+""")
 
         # Create resources in template2
-        (template2_dir / "app-deployment.yaml").write_text(
-            """apiVersion: apps/v1
+        (template2_dir / "app-deployment.yaml").write_text("""apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: app2
@@ -349,8 +330,7 @@ spec:
       containers:
       - name: app
         image: nginx
-"""
-        )
+""")
 
         analyzer = ResourceAnalyzer(tmp_path, template_names=["template1"])
         namespace_to_resources, relationships = analyzer.analyze()
@@ -366,13 +346,11 @@ spec:
         manifest_dir.mkdir()
 
         crd_file = manifest_dir / "crd.yaml"
-        crd_file.write_text(
-            """apiVersion: apiextensions.k8s.io/v1
+        crd_file.write_text("""apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   name: kafkas.kafka.strimzi.io
-"""
-        )
+""")
 
         analyzer = ResourceAnalyzer(manifest_dir, show_crds=False)
         namespace_to_resources, relationships = analyzer.analyze()
@@ -390,13 +368,11 @@ metadata:
         manifest_dir.mkdir()
 
         crd_file = manifest_dir / "crd.yaml"
-        crd_file.write_text(
-            """apiVersion: apiextensions.k8s.io/v1
+        crd_file.write_text("""apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   name: kafkas.kafka.strimzi.io
-"""
-        )
+""")
 
         analyzer = ResourceAnalyzer(manifest_dir, show_crds=True)
         namespace_to_resources, relationships = analyzer.analyze()
@@ -501,8 +477,7 @@ class TestGenerateVisualization:
         manifest_dir = tmp_path / "template1"
         manifest_dir.mkdir()
 
-        (manifest_dir / "app-deployment.yaml").write_text(
-            """apiVersion: apps/v1
+        (manifest_dir / "app-deployment.yaml").write_text("""apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: app
@@ -513,8 +488,7 @@ spec:
       containers:
       - name: app
         image: nginx
-"""
-        )
+""")
 
         dot = generate_visualization(tmp_path, template_names=["template1"])
         assert "digraph G" in dot
