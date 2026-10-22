@@ -7,7 +7,7 @@ name = "kubeman"
 dynamic = ["version"]
 description = "A Python library for rendering Helm charts and Kubernetes resources with optional ArgoCD Application generation. Features an abstract Template base class for consistent template management."
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 license = {text = "MIT"}
 authors = [
     {name = "Hazel Sudzilouski", email = "hazel@sudz.com"},
@@ -18,7 +18,6 @@ classifiers = [
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
@@ -58,7 +57,7 @@ include = ["kubeman/**/*.py"]
 
 [tool.black]
 line-length = 100
-target-version = ['py310', 'py311', 'py312', 'py313']
+target-version = ['py311', 'py312', 'py313', 'py314']
 include = '\.pyi?$'
 extend-exclude = '''
 /(
@@ -76,7 +75,7 @@ extend-exclude = '''
 
 [tool.ruff]
 line-length = 100
-target-version = "py310"
+target-version = "py311"
 extend-exclude = ["dist", "build", "manifests", ".venv"]
 
 [tool.ruff.lint]
@@ -89,7 +88,7 @@ ignore = ["E501"]  # line length is enforced by black, not ruff
 "examples/**" = ["E402"]
 
 [tool.mypy]
-python_version = "3.10"
+python_version = "3.11"
 ignore_missing_imports = true
 exclude = ['^(dist|build|examples)/']
 

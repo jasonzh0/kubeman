@@ -214,22 +214,18 @@ class TestApplyManifests:
         mock_get_executor.return_value = mock_executor
 
         crd_file = tmp_path / "crd.yaml"
-        crd_file.write_text(
-            """apiVersion: apiextensions.k8s.io/v1
+        crd_file.write_text("""apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   name: kafkas.kafka.strimzi.io
-"""
-        )
+""")
 
         resource_file = tmp_path / "resource.yaml"
-        resource_file.write_text(
-            """apiVersion: kafka.strimzi.io/v1beta2
+        resource_file.write_text("""apiVersion: kafka.strimzi.io/v1beta2
 kind: Kafka
 metadata:
   name: my-cluster
-"""
-        )
+""")
 
         with patch("kubeman.cli.Template.manifests_dir") as mock_dir:
             mock_path = MagicMock()
@@ -269,8 +265,7 @@ metadata:
         mock_get_executor.return_value = mock_executor
 
         multi_doc_file = tmp_path / "multi.yaml"
-        multi_doc_file.write_text(
-            """---
+        multi_doc_file.write_text("""---
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
@@ -280,17 +275,14 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: test-config
-"""
-        )
+""")
 
         regular_file = tmp_path / "regular.yaml"
-        regular_file.write_text(
-            """apiVersion: v1
+        regular_file.write_text("""apiVersion: v1
 kind: Service
 metadata:
   name: test-service
-"""
-        )
+""")
 
         with patch("kubeman.cli.Template.manifests_dir") as mock_dir:
             mock_path = MagicMock()
@@ -325,13 +317,11 @@ metadata:
         mock_get_executor.return_value = mock_executor
 
         resource_file = tmp_path / "resource.yaml"
-        resource_file.write_text(
-            """apiVersion: v1
+        resource_file.write_text("""apiVersion: v1
 kind: ConfigMap
 metadata:
   name: test-config
-"""
-        )
+""")
 
         with patch("kubeman.cli.Template.manifests_dir") as mock_dir:
             mock_path = MagicMock()
@@ -355,8 +345,7 @@ metadata:
         # CRD + namespaced resource with an explicit namespace lands in the
         # 'other' bucket, which triggers CRD extraction to a temp file.
         mixed = tmp_path / "mixed.yaml"
-        mixed.write_text(
-            """---
+        mixed.write_text("""---
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
@@ -367,8 +356,7 @@ kind: ConfigMap
 metadata:
   name: cfg
   namespace: demo
-"""
-        )
+""")
         before = set(os.listdir(tmp_path))
 
         with patch("kubeman.cli.Template.manifests_dir") as mock_dir:
